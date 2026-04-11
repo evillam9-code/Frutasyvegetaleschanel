@@ -133,6 +133,12 @@ h1,h2,h3{font-family:'DM Serif Display',serif;font-weight:400}
 .btn-secondary:hover{background:var(--gray-50)}
 .btn-danger{background:var(--red-100);color:var(--red-600);border-color:transparent}
 .btn-danger:hover{background:var(--red-500);color:var(--white)}
+.rol-visitante .btn-primary:not(.allow-visitante),
+.rol-visitante .btn-secondary:not(.allow-visitante),
+.rol-visitante .btn-danger,
+.rol-visitante .btn-amber:not(.allow-visitante){display:none!important}
+/* Hide new user form for non-admin */
+body:not(.rol-admin) #page-usuarios .card:first-of-type{display:none}
 .btn-amber{background:var(--amber-100);color:var(--amber-600);border-color:transparent}
 .btn-sm{padding:5px 12px;font-size:12px}
 .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
@@ -440,8 +446,14 @@ function ss(k,v){try{localStorage.setItem('fv2_'+k,JSON.stringify(v))}catch{}}
 const defaultUsers = [
   {id:'u1',username:'admin',password:'admin123',nombre:'Administrador',role:'admin',
    permisos:['dashboard','factura','ventas','compras','inventario','productos','clientes','suplidores','gastos','nomina','informes','caja','cobros','cxp','usuarios','config']},
-  {id:'u2',username:'cajero1',password:'cajero123',nombre:'Cajero Principal',role:'cajero',
+  {id:'u2',username:'dueno',password:'dueno123',nombre:'Dueño',role:'dueno',
+   permisos:['dashboard','factura','ventas','compras','inventario','productos','clientes','suplidores','gastos','nomina','informes','caja','cobros','cxp','config']},
+  {id:'u3',username:'cajero1',password:'cajero123',nombre:'Cajero Principal',role:'cajero',
    permisos:['dashboard','factura','ventas','caja']},
+  {id:'u4',username:'secretaria1',password:'sec123',nombre:'Secretaria',role:'secretaria',
+   permisos:['dashboard','ventas','compras','inventario','productos','clientes','suplidores','cobros','cxp']},
+  {id:'u5',username:'visitante',password:'vis123',nombre:'Visitante',role:'visitante',
+   permisos:['dashboard','ventas','inventario','informes']},
 ];
 const defaultProductos = [
   {id:'p1',codigo:'P001',nombre:'Mango',categoria:'Fruta',unidad:'Lb',costo:15,venta:25,minimo:10,img:''},
@@ -522,6 +534,17 @@ function closeModal(e){
 }
 
 function can(perm){return currentUser && currentUser.permisos.includes(perm)}
+function isDueno(){return currentUser && (currentUser.role==='admin'||currentUser.role==='dueno');}
+function isAdmin(){return currentUser && currentUser.role==='admin';}
+function isVisitante(){return currentUser && currentUser.role==='visitante';}
+function getRolLabel(role){
+  const labels={admin:'Administrador',dueno:'Dueño',cajero:'Cajero',secretaria:'Secretaria',visitante:'Visitante'};
+  return labels[role]||role;
+}
+function getRolBadge(role){
+  const badges={admin:'badge-blue',dueno:'badge-purple',cajero:'badge-green',secretaria:'badge-amber',visitante:'badge-gray'};
+  return badges[role]||'badge-gray';
+}
 
 function stockOf(nombre){
   const c=DB.compras.filter(x=>x.producto===nombre).reduce((a,x)=>a+parseFloat(x.cantidad||0),0);
@@ -581,7 +604,9 @@ function doLogin(){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
   document.getElementById('top-username').textContent=user.nombre;
-  document.getElementById('top-userrole').textContent=user.role==='admin'?'Administrador':user.role;
+  document.getElementById('top-userrole').textContent=getRolLabel(user.role);
+  document.body.className=document.body.className.replace(/rol-\S+/g,'').trim();
+  document.body.classList.add('rol-'+user.role);
   document.getElementById('user-initials').textContent=user.nombre.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
   buildNav();
   applyConfig();
@@ -907,11 +932,11 @@ function renderFactura(){
               <label>Fecha vencimiento credito</label>
               <input type="date" id="fac-vence">
             </div>
-            <div class="form-field"><label>Tipo de factura</label>
-              <select id="fac-comprobante" onchange="facUpdatePreview()">
-                <option value="sin">Sin comprobante fiscal</option>
-                <option value="con">Con comprobante fiscal</option>
-              </select>
+            <div class="form-field">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">
+                <input type="checkbox" id="fac-comprobante" onchange="facUpdatePreview()" style="width:18px;height:18px;cursor:pointer">
+                Agregar comprobante fiscal (NCF)
+              </label>
             </div>
           </div>
         </div>
@@ -928,7 +953,7 @@ function renderFactura(){
               <span>Subtotal</span><span id="fac-sub">RD$ 0.00</span>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px;color:var(--gray-500)">
-              <span>ITBIS (18%)</span><span id="fac-itbis">RD$ 0.00</span>
+              <span>ITBIS</span><span id="fac-itbis">RD$ 0.00</span>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:20px;font-weight:700;color:var(--green-800)">
               <span>Total</span><span id="fac-total">RD$ 0.00</span>
@@ -956,7 +981,7 @@ function renderFactura(){
         <div id="pv-lines" style="min-height:60px;margin-bottom:10px;font-size:12px"></div>
         <div class="inv-totals">
           <div class="inv-total-row"><span>Subtotal</span><span id="pv-sub">RD$ 0.00</span></div>
-          <div class="inv-total-row" style="color:var(--gray-500)"><span>ITBIS 18%</span><span id="pv-itbis">RD$ 0.00</span></div>
+          <div class="inv-total-row" style="color:var(--gray-500)"><span>ITBIS</span><span id="pv-itbis">RD$ 0.00</span></div>
           <div class="inv-total-row grand"><span>TOTAL</span><span id="pv-total">RD$ 0.00</span></div>
         </div>
         <div style="text-align:center;margin-top:16px;font-size:11px;color:var(--gray-400);border-top:1px dashed var(--gray-200);padding-top:10px">¡Gracias por su compra!<br>Frutas & Vegetales</div>
@@ -1041,7 +1066,7 @@ function facGuardar(){
   const sub=lineas.reduce((a,l)=>a+l.cantidad*l.precio*(1-l.descuento/100),0);
   const total=sub*(1+ITBIS_RATE);
   const num=String(DB.ventas.length+1).padStart(5,'0');
-  const conComprobante=document.getElementById('fac-comprobante')?.value==='si';
+  const conComprobante=document.getElementById('fac-comprobante')?.checked===true;
   const nuevaVenta={id:uid(),num,
     fecha:document.getElementById('fac-fecha').value,
     cliente:document.getElementById('fac-cli').value||'Consumidor Final',
@@ -1085,7 +1110,7 @@ function renderVentas(){
             <td style="text-align:right;font-weight:600;color:var(--green-700)">${fmt(v.total)}</td>
             <td><div style="display:flex;gap:4px">
               <button class="btn btn-secondary btn-sm" onclick="verFactura('${v.id}')">🧾 Ver</button>
-              ${can('usuarios')?`<button class="btn btn-danger btn-sm" onclick="ventaEliminar('${v.id}')">🗑</button>`:''}
+              ${isDueno()?`<button class="btn btn-danger btn-sm" onclick="ventaEliminar('${v.id}')">🗑</button>`:''}
             </div></td>
           </tr>`).join('')||'<tr><td colspan="9"><div class="empty-state"><div class="empty-ico">🧾</div><p>Sin ventas registradas</p></div></td></tr>'}
         </tbody>
@@ -1100,7 +1125,7 @@ function ventaEliminar(id){
     `<p>¿Eliminar la factura <strong>#${escHtml(v.num)}</strong> de <strong>${escHtml(v.cliente||'Consumidor Final')}</strong> por <strong>${fmt(v.total)}</strong>?</p>
      <p style="margin-top:8px;font-size:12px;color:var(--red-500)">⚠️ Esta acción no se puede deshacer.</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-danger" onclick="ventaEliminarConfirm('${id}')">Eliminar</button>`);
+     ${isDueno()?`<button class="btn btn-danger" onclick="ventaEliminarConfirm('${id}')">Eliminar</button>`:''}`);
 }
 function ventaEliminarConfirm(id){
   DB.ventas=DB.ventas.filter(x=>x.id!==id);
@@ -1298,7 +1323,7 @@ function renderProductos(){
             <td style="text-align:center">${p.minimo}</td>
             <td><div style="display:flex;gap:6px">
               <button class="btn btn-secondary btn-sm" onclick="prEditar(${i})">✏️</button>
-              <button class="btn btn-danger btn-sm" onclick="prEliminar(${i})">🗑</button>
+              ${isDueno()?`<button class="btn btn-danger btn-sm" onclick="prEliminar(${i})">🗑</button>`:''}
             </div></td>
           </tr>`).join('')||'<tr><td colspan="9"><div class="empty-state"><p>Sin productos</p></div></td></tr>'}
         </tbody>
@@ -1316,6 +1341,9 @@ function prOnImg(inp){
 function prGuardar(){
   const nom=document.getElementById('pr-nom').value.trim();
   if(!nom){toast('El nombre es requerido','error');return;}
+  const cod=document.getElementById('pr-cod').value.trim();
+  if(DB.productos.find(p=>p.nombre.toLowerCase()===nom.toLowerCase())){toast('Ya existe un producto con ese nombre','error');return;}
+  if(cod && DB.productos.find(p=>p.codigo&&p.codigo.toLowerCase()===cod.toLowerCase())){toast('Ya existe un producto con ese código','error');return;}
   DB.productos.push({id:uid(),
     codigo:document.getElementById('pr-cod').value.trim()||'P'+String(DB.productos.length+1).padStart(3,'0'),
     nombre:nom,categoria:document.getElementById('pr-cat').value,
@@ -1330,7 +1358,7 @@ function prEliminar(i){
   openModal('Confirmar eliminación',
     `<p>¿Eliminar el producto <strong>${escHtml(DB.productos[i].nombre)}</strong>? Esta acción no se puede deshacer.</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-danger" onclick="prEliminarConfirm(${i})">Eliminar</button>`);
+     ${isDueno()?`<button class="btn btn-danger" onclick="prEliminarConfirm(${i})">Eliminar</button>`:''}`);
 }
 function prEliminarConfirm(i){DB.productos.splice(i,1);sDB('productos');closeModal();toast('Producto eliminado');renderProductos();}
 function prEditar(i){
@@ -1403,7 +1431,7 @@ function renderClientes(){
             <td style="font-weight:600;color:var(--green-700)">${fmt(total)}</td>
             <td><div style="display:flex;gap:6px">
               <button class="btn btn-secondary btn-sm" onclick="clEditar(${i})">✏️</button>
-              <button class="btn btn-danger btn-sm" onclick="clEliminar(${i})">🗑</button>
+              ${isDueno()?`<button class="btn btn-danger btn-sm" onclick="clEliminar(${i})">🗑</button>`:''}
             </div></td>
           </tr>`;}).join('')||'<tr><td colspan="7"><div class="empty-state"><div class="empty-ico">👤</div><p>Sin clientes registrados</p></div></td></tr>'}
         </tbody>
@@ -1413,6 +1441,9 @@ function renderClientes(){
 function clGuardar(){
   if(!validarCampos(['cl-nom','cl-tel']))return;
   const nom=document.getElementById('cl-nom').value.trim();
+  const rnc=document.getElementById('cl-rnc').value.trim();
+  if(DB.clientes.find(c=>c.nombre.toLowerCase()===nom.toLowerCase())){toast('Ya existe un cliente con ese nombre','error');return;}
+  if(rnc && DB.clientes.find(c=>c.rnc&&c.rnc===rnc)){toast('Ya existe un cliente con ese RNC/Cédula','error');return;}
   DB.clientes.push({id:uid(),nombre:nom,
     rnc:document.getElementById('cl-rnc').value.trim(),
     tel:document.getElementById('cl-tel').value,
@@ -1449,7 +1480,7 @@ function clEditarGuardar(i){
 function clEliminar(i){
   openModal('Eliminar cliente',`<p>¿Eliminar a <strong>${escHtml(DB.clientes[i].nombre)}</strong>?</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-danger" onclick="DB.clientes.splice(${i},1);sDB('clientes');closeModal();toast('Cliente eliminado');renderClientes()">Eliminar</button>`);
+     ${isDueno()?`<button class="btn btn-danger" onclick="DB.clientes.splice(${i},1);sDB('clientes');closeModal();toast('Cliente eliminado');renderClientes()">Eliminar</button>`:''}`);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1487,7 +1518,7 @@ function renderSuplidores(){
             <td style="font-weight:600;color:var(--amber-600)">${fmt(total)}</td>
             <td><div style="display:flex;gap:4px">
               <button class="btn btn-secondary btn-sm" onclick="suEditar(${i})">✏️</button>
-              <button class="btn btn-danger btn-sm" onclick="suEliminar(${i})">🗑</button>
+              ${isDueno()?`<button class="btn btn-danger btn-sm" onclick="suEliminar(${i})">🗑</button>`:''}
             </div></td>
           </tr>`;}).join('')||'<tr><td colspan="7"><div class="empty-state"><div class="empty-ico">🏭</div><p>Sin suplidores registrados</p></div></td></tr>'}
         </tbody>
@@ -1497,6 +1528,9 @@ function renderSuplidores(){
 function suGuardar(){
   const nom=document.getElementById('su-nom').value.trim();
   if(!nom){toast('El nombre es requerido','error');return;}
+  const rnc=document.getElementById('su-rnc').value.trim();
+  if(DB.suplidores.find(s=>s.nombre.toLowerCase()===nom.toLowerCase())){toast('Ya existe un suplidor con ese nombre','error');return;}
+  if(rnc && DB.suplidores.find(s=>s.rnc&&s.rnc===rnc)){toast('Ya existe un suplidor con ese RNC','error');return;}
   DB.suplidores.push({id:uid(),nombre:nom,
     rnc:document.getElementById('su-rnc').value.trim(),
     tel:document.getElementById('su-tel').value,
@@ -1533,7 +1567,7 @@ function suEditarGuardar(i){
 function suEliminar(i){
   openModal('Eliminar suplidor',`<p>¿Eliminar a <strong>${escHtml(DB.suplidores[i].nombre)}</strong>?</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-danger" onclick="DB.suplidores.splice(${i},1);sDB('suplidores');closeModal();toast('Suplidor eliminado');renderSuplidores()">Eliminar</button>`);
+     ${isDueno()?`<button class="btn btn-danger" onclick="DB.suplidores.splice(${i},1);sDB('suplidores');closeModal();toast('Suplidor eliminado');renderSuplidores()">Eliminar</button>`:''}`);
 }
 
 
@@ -1904,7 +1938,7 @@ function renderGastos(){
               <td style="color:var(--gray-500)">${escHtml(g.proveedor||'—')}</td>
               <td style="color:var(--gray-400);font-size:12px">${escHtml(g.comprobante||'—')}</td>
               <td style="text-align:right;font-weight:600;color:#e11d48">${fmt(g.monto)}</td>
-              <td><button class="btn btn-danger btn-sm" onclick="gsEliminar(${i})">🗑</button></td>
+              <td>${isDueno()?`<button class="btn btn-danger btn-sm" onclick="gsEliminar(${i})">🗑</button>`:''}</td>
             </tr>`;}).join('')||'<tr><td colspan="7"><div class="empty-state"><div class="empty-ico">💸</div><p>Sin gastos registrados</p></div></td></tr>'}
           </tbody>
         </table></div>
@@ -1940,7 +1974,7 @@ function gsGuardar(){
 function gsEliminar(i){
   openModal('Eliminar gasto',`<p>¿Eliminar el gasto <strong>${escHtml(DB.gastos[i].descripcion)}</strong>?</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-danger" onclick="DB.gastos.splice(${i},1);sDB('gastos');closeModal();toast('Gasto eliminado');renderGastos()">Eliminar</button>`);
+     ${isDueno()?`<button class="btn btn-danger" onclick="DB.gastos.splice(${i},1);sDB('gastos');closeModal();toast('Gasto eliminado');renderGastos()">Eliminar</button>`:''}`);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -2035,7 +2069,7 @@ function renderNomina(){
               <td style="color:var(--red-500)">-${fmt(desc)}</td>
               <td style="text-align:right;font-weight:600;color:#0891b2">${fmt(n.monto)}</td>
               <td><span class="badge badge-gray">${escHtml(n.metodo||'—')}</span></td>
-              <td><button class="btn btn-danger btn-sm" onclick="nmEliminar(${i})">🗑</button></td>
+              <td>${isDueno()?`<button class="btn btn-danger btn-sm" onclick="nmEliminar(${i})">🗑</button>`:''}</td>
             </tr>`;}).join('')||'<tr><td colspan="8"><div class="empty-state"><div class="empty-ico">👷</div><p>Sin pagos registrados</p></div></td></tr>'}
           </tbody>
         </table></div>
@@ -2091,7 +2125,7 @@ function nmGuardar(){
 function nmEliminar(i){
   openModal('Eliminar pago',`<p>¿Eliminar el pago de <strong>${escHtml(DB.nomina[i].empleado)}</strong>?</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-danger" onclick="DB.nomina.splice(${i},1);sDB('nomina');closeModal();toast('Pago eliminado');renderNomina()">Eliminar</button>`);
+     ${isDueno()?`<button class="btn btn-danger" onclick="DB.nomina.splice(${i},1);sDB('nomina');closeModal();toast('Pago eliminado');renderNomina()">Eliminar</button>`:''}`);
 }
 
 function nmGestionarEmpleados(){
@@ -2106,7 +2140,7 @@ function nmGestionarEmpleados(){
       ${lista.length?lista.map((e,i)=>`
         <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--gray-50);border-radius:6px;font-size:13px">
           <span>👷 ${escHtml(e)}</span>
-          <button class="btn btn-danger btn-sm" onclick="nmQuitarEmpleado(${i})">🗑</button>
+          ${isDueno()?`<button class="btn btn-danger btn-sm" onclick="nmQuitarEmpleado(${i})">🗑</button>`:''}
         </div>`).join(''):'<div style="text-align:center;color:var(--gray-400);padding:16px;font-size:13px">Sin empleados agregados aún</div>'}
     </div>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>`);
@@ -2458,6 +2492,16 @@ function renderUsuarios(){
         <div class="form-field"><label>Usuario (login)</label><input type="text" id="us-user" placeholder="usuario123"></div>
         <div class="form-field"><label>Contraseña</label><input type="password" id="us-pass" placeholder="contraseña segura"></div>
       </div>
+      <div class="form-row c3">
+        <div class="form-field"><label>Rol</label>
+          <select id="us-role">
+            <option value="cajero">Cajero</option>
+            <option value="secretaria">Secretaria</option>
+            <option value="dueno">Dueño</option>
+            <option value="visitante">Visitante</option>
+          </select>
+        </div>
+      </div>
       <div class="form-field"><label>Módulos permitidos</label>
         <div class="perm-grid" id="perm-grid-new">
           ${MODULOS.map(m=>`
@@ -2466,7 +2510,7 @@ function renderUsuarios(){
             </label>`).join('')}
         </div>
       </div>
-      <div class="btn-row"><button class="btn btn-primary" onclick="usGuardar()">💾 Crear usuario</button></div>
+      <div class="btn-row">${isAdmin()?`<button class="btn btn-primary" onclick="usGuardar()">💾 Crear usuario</button>`:''}</div>
     </div>
     <div class="card">
       <div class="card-title"><span class="ico">👥</span>Usuarios del sistema</div>
@@ -2476,12 +2520,12 @@ function renderUsuarios(){
           <tr>
             <td style="font-weight:500">${escHtml(u.nombre)}</td>
             <td style="font-family:monospace;color:var(--gray-500)">${escHtml(u.username)}</td>
-            <td><span class="badge ${u.role==='admin'?'badge-blue':'badge-gray'}">${u.role==='admin'?'Admin':'Usuario'}</span></td>
+            <td><span class="badge ${getRolBadge(u.role)}">${getRolLabel(u.role)}</span></td>
             <td style="max-width:200px">${(u.permisos||[]).map(p=>`<span class="badge badge-green" style="margin:2px;font-size:10px">${escHtml(MODULOS.find(m=>m.id===p)?.label||p)}</span>`).join('')}</td>
             <td><div style="display:flex;gap:6px">
               <button class="btn btn-secondary btn-sm" onclick="usEditar(${i})">✏️ Editar</button>
               <button class="btn btn-amber btn-sm" onclick="usEditarPermisos(${i})">🔑 Permisos</button>
-              ${u.id!=='u1'?`<button class="btn btn-danger btn-sm" onclick="usEliminar(${i})">🗑</button>`:''}
+              ${(isAdmin()&&u.id!=='u1')?`<button class="btn btn-danger btn-sm" onclick="usEliminar(${i})">🗑</button>`:''}
             </div></td>
           </tr>`).join('')}
         </tbody>
@@ -2501,11 +2545,12 @@ function usGuardar(){
   const nom=document.getElementById('us-nom').value.trim();
   const user=document.getElementById('us-user').value.trim();
   const pass=document.getElementById('us-pass').value;
+  const role=document.getElementById('us-role').value;
   if(!nom||!user||!pass){toast('Completa todos los campos','error');return;}
   if(DB.users.find(u=>u.username===user)){toast('Ese nombre de usuario ya existe','error');return;}
   const permisos=MODULOS.filter(m=>document.getElementById('perm-'+m.id)?.checked).map(m=>m.id);
   if(!permisos.includes('dashboard'))permisos.unshift('dashboard');
-  DB.users.push({id:uid(),username:user,password:pass,nombre:nom,role:'usuario',permisos});
+  DB.users.push({id:uid(),username:user,password:pass,nombre:nom,role:role,permisos});
   sDB('users');toast('Usuario creado ✓');renderUsuarios();
 }
 function usEditar(i){
@@ -2546,7 +2591,7 @@ function usEditarGuardar(i){
 function usEliminar(i){
   openModal('Eliminar usuario',`<p>¿Eliminar al usuario <strong>${escHtml(DB.users[i].nombre)}</strong>?</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-danger" onclick="DB.users.splice(${i},1);sDB('users');closeModal();toast('Usuario eliminado');renderUsuarios()">Eliminar</button>`);
+     ${isDueno()?`<button class="btn btn-danger" onclick="DB.users.splice(${i},1);sDB('users');closeModal();toast('Usuario eliminado');renderUsuarios()">Eliminar</button>`:''}`);
 }
 function usEditarPermisos(i){
   const u=DB.users[i];
@@ -2583,7 +2628,7 @@ function renderPerfil(){
         <div>
           <div style="font-size:18px;font-weight:600">${escHtml(currentUser.nombre)}</div>
           <div style="font-size:13px;color:var(--gray-500)">@${escHtml(currentUser.username)}</div>
-          <span class="badge badge-blue" style="margin-top:4px">${currentUser.role==='admin'?'Administrador':'Usuario'}</span>
+          <span class="badge badge-blue" style="margin-top:4px">${getRolLabel(currentUser.role)}</span>
         </div>
       </div>
       <div class="form-section">
@@ -2649,7 +2694,7 @@ const defaultConfig = {
   direccion: 'Calle Anselmo Copello, Edificio 15, Apto 1-1, Santiago',
   correo: 'vegetaleschanel@hotmail.com',
   moneda: 'RD$',
-  itbis: 18,
+  itbis: 0,
   colorPrimary: '#1a6b3c',
   colorAccent: '#2da84e',
   menuDashboard: 'Dashboard',
