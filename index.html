@@ -958,6 +958,12 @@ function renderFactura(){
                 Agregar comprobante fiscal (NCF)
               </label>
             </div>
+            <div class="form-field">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">
+                <input type="checkbox" id="fac-itbis-check" onchange="facCalc()" style="width:18px;height:18px;cursor:pointer">
+                Aplicar ITBIS
+              </label>
+            </div>
           </div>
         </div>
         <div class="card">
@@ -972,7 +978,7 @@ function renderFactura(){
             <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:var(--gray-600)">
               <span>Subtotal</span><span id="fac-sub">RD$ 0.00</span>
             </div>
-            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px;color:var(--gray-500)">
+            <div id="fac-itbis-row" style="display:none;justify-content:space-between;font-size:13px;margin-bottom:10px;color:var(--gray-500)">
               <span>ITBIS</span><span id="fac-itbis">RD$ 0.00</span>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:20px;font-weight:700;color:var(--green-800)">
@@ -1001,7 +1007,7 @@ function renderFactura(){
         <div id="pv-lines" style="min-height:60px;margin-bottom:10px;font-size:12px"></div>
         <div class="inv-totals">
           <div class="inv-total-row"><span>Subtotal</span><span id="pv-sub">RD$ 0.00</span></div>
-          <div class="inv-total-row" style="color:var(--gray-500)"><span>ITBIS</span><span id="pv-itbis">RD$ 0.00</span></div>
+          <div id="pv-itbis-row" class="inv-total-row" style="display:none;color:var(--gray-500)"><span>ITBIS</span><span id="pv-itbis">RD$ 0.00</span></div>
           <div class="inv-total-row grand"><span>TOTAL</span><span id="pv-total">RD$ 0.00</span></div>
         </div>
         <div style="text-align:center;margin-top:16px;font-size:11px;color:var(--gray-400);border-top:1px dashed var(--gray-200);padding-top:10px">¡Gracias por su compra!<br>Frutas & Vegetales</div>
@@ -1011,7 +1017,7 @@ function renderFactura(){
 }
 
 function facAddLine(){
-  facLines.push({nombre:'',cantidad:1,precio:0,descuento:0});
+  facLines.push({nombre:'',cantidad:1,precio:'',descuento:0});
   facRenderLines();
 }
 function facRemoveLine(i){
@@ -1026,9 +1032,9 @@ function facRenderLines(){
       <div class="line-num">${i+1}</div>
       <select onchange="facOnProd(${i},this)">${opts.replace(`value="${escHtml(l.nombre)}"`,`value="${escHtml(l.nombre)}" selected`)}</select>
       <input type="number" min="0" step="0.1" value="${l.cantidad}" onchange="facOnQty(${i},this)">
-      <input type="number" min="0" step="0.01" value="${l.precio}" onchange="facOnPrice(${i},this)">
+      <input type="number" min="0" step="0.01" value="${l.precio||''}" placeholder="" onchange="facOnPrice(${i},this)">
       <input type="number" min="0" max="100" value="${l.descuento}" onchange="facOnDesc(${i},this)">
-      <div class="line-sub" id="ls${i}">${fmt(l.cantidad*l.precio*(1-l.descuento/100))}</div>
+      <div class="line-sub" id="ls${i}">${l.precio?fmt(l.cantidad*l.precio*(1-l.descuento/100)):''}</div>
       <button class="rm-line" onclick="facRemoveLine(${i})">×</button>
     </div>`).join('');
   facCalc();
@@ -1051,8 +1057,15 @@ function facCalcLine(i){
 }
 function facCalc(){
   const sub=facLines.reduce((a,l)=>a+l.cantidad*l.precio*(1-l.descuento/100),0);
-  const itbis=sub*ITBIS_RATE;const total=sub+itbis;
+  const aplicaITBIS=document.getElementById('fac-itbis-check')?.checked===true;
+  const itbis=aplicaITBIS?sub*ITBIS_RATE:0;
+  const total=sub+itbis;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=fmt(v)};
+  // Mostrar/ocultar fila ITBIS
+  const itbisRow=document.getElementById('fac-itbis-row');
+  const pvItbisRow=document.getElementById('pv-itbis-row');
+  if(itbisRow)itbisRow.style.display=aplicaITBIS?'flex':'none';
+  if(pvItbisRow)pvItbisRow.style.display=aplicaITBIS?'flex':'none';
   set('fac-sub',sub);set('fac-itbis',itbis);set('fac-total',total);
   set('pv-sub',sub);set('pv-itbis',itbis);set('pv-total',total);
   const pvl=document.getElementById('pv-lines');
@@ -1084,7 +1097,9 @@ function facGuardar(){
   const lineas=facLines.filter(l=>l.nombre&&l.cantidad>0);
   if(!lineas.length){toast('Agrega al menos un producto','error');return;}
   const sub=lineas.reduce((a,l)=>a+l.cantidad*l.precio*(1-l.descuento/100),0);
-  const total=sub*(1+ITBIS_RATE);
+  const aplicaITBIS=document.getElementById('fac-itbis-check')?.checked===true;
+  const itbisAmt=aplicaITBIS?sub*ITBIS_RATE:0;
+  const total=sub+itbisAmt;
   const num=String(DB.ventas.length+1).padStart(5,'0');
   const conComprobante=document.getElementById('fac-comprobante')?.checked===true;
   const nuevaVenta={id:uid(),num,
@@ -1092,7 +1107,7 @@ function facGuardar(){
     cliente:document.getElementById('fac-cli').value||'Consumidor Final',
     pago:document.getElementById('fac-pago').value,
     comprobante:conComprobante,
-    lineas,subtotal:sub,total,
+    lineas,subtotal:sub,itbis:itbisAmt,aplicaITBIS,total,
     cajero:currentUser.nombre,
     credito: document.getElementById("fac-pago").value === "Credito",
     fechaVence: document.getElementById("fac-pago").value === "Credito" ? document.getElementById("fac-vence").value : null,
@@ -3048,7 +3063,9 @@ function facHtml(v){
   const itbis = c.itbis || 18;
   const lineas = (v.lineas || []);
   const sub = lineas.reduce((a,l)=>a+l.cantidad*l.precio*(1-l.descuento/100),0);
-  const itbisAmt = sub * itbis/100;
+  // Usar itbis guardado en la venta, o recalcular si aplica
+  const aplicaITBIS = v.aplicaITBIS === true;
+  const itbisAmt = aplicaITBIS ? (v.itbis || sub * itbis/100) : 0;
   const total = sub + itbisAmt;
   const cliObj = DB.clientes.find(x=>x.nombre===v.cliente) || {};
   const logoHtml = c.logoData
@@ -3195,7 +3212,7 @@ function facHtml(v){
     <div class="fac-totales">
       <div class="fac-totales-box">
         <div class="fac-tot-row"><span>Subtotal</span><span>${moneda} ${sub.toFixed(2)}</span></div>
-        <div class="fac-tot-row" style="color:#9ca3af"><span>ITBIS (${itbis}%)</span><span>${moneda} ${itbisAmt.toFixed(2)}</span></div>
+        ${aplicaITBIS?`<div class="fac-tot-row" style="color:#9ca3af"><span>ITBIS (${itbis}%)</span><span>${moneda} ${itbisAmt.toFixed(2)}</span></div>`:''}
         <div class="fac-tot-grand"><span>TOTAL RD$</span><span>${moneda} ${total.toFixed(2)}</span></div>
       </div>
     </div>
