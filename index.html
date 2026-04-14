@@ -933,11 +933,11 @@ function renderFactura(){
       <div>
         <div class="card" style="margin-bottom:14px">
           <div class="card-title"><span class="ico">👤</span>Datos del cliente</div>
-          <div class="form-row c4">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;margin-bottom:14px">
             <div class="form-field"><label>Cliente</label>
               <select id="fac-cli" onchange="facUpdatePreview()">
                 <option value="">Consumidor Final</option>
-                ${DB.clientes.map(c=>`<option>${escHtml(c.nombre)}</option>`).join('')}
+                ${[...DB.clientes].sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(c=>`<option>${escHtml(c.nombre)}</option>`).join('')}
               </select>
             </div>
             <div class="form-field"><label>Fecha</label><input type="date" id="fac-fecha" value="${today()}" onchange="facUpdatePreview()"></div>
@@ -948,22 +948,20 @@ function renderFactura(){
                 <option value="Credito">Credito</option>
               </select>
             </div>
-            <div class="form-field" id="fac-vence-wrap" style="display:none">
-              <label>Fecha vencimiento credito</label>
+          </div>
+          <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+            <div class="form-field" id="fac-vence-wrap" style="display:none;margin:0">
+              <label>Fecha vencimiento crédito</label>
               <input type="date" id="fac-vence">
             </div>
-            <div class="form-field">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">
-                <input type="checkbox" id="fac-comprobante" onchange="facUpdatePreview()" style="width:18px;height:18px;cursor:pointer">
-                Agregar comprobante fiscal (NCF)
-              </label>
-            </div>
-            <div class="form-field">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">
-                <input type="checkbox" id="fac-itbis-check" onchange="facCalc()" style="width:18px;height:18px;cursor:pointer">
-                Aplicar ITBIS
-              </label>
-            </div>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;font-size:13px">
+              <input type="checkbox" id="fac-comprobante" onchange="facUpdatePreview()" style="width:16px;height:16px;cursor:pointer">
+              Agregar comprobante fiscal (NCF)
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;font-size:13px">
+              <input type="checkbox" id="fac-itbis-check" onchange="facCalc()" style="width:16px;height:16px;cursor:pointer">
+              Aplicar ITBIS
+            </label>
           </div>
         </div>
         <div class="card">
@@ -1026,7 +1024,7 @@ function facRemoveLine(i){
   else facRenderLines();
 }
 function facRenderLines(){
-  const opts='<option value="">— Seleccionar —</option>'+DB.productos.map(p=>`<option value="${escHtml(p.nombre)}" data-precio="${p.venta}">${escHtml(p.nombre)} (${escHtml(p.unidad)})</option>`).join('');
+  const opts='<option value="">— Seleccionar —</option>'+[...DB.productos].sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(p=>`<option value="${escHtml(p.nombre)}" data-precio="${p.venta}">${escHtml(p.nombre)} (${escHtml(p.unidad)})</option>`).join('');
   document.getElementById('fac-lines').innerHTML=facLines.map((l,i)=>`
     <div class="inv-line" id="fl${i}">
       <div class="line-num">${i+1}</div>
