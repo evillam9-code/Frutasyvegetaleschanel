@@ -1143,7 +1143,7 @@ function renderVentas(){
             <td style="text-align:right;font-weight:600;color:var(--green-700)">${fmt(v.total)}</td>
             <td><div style="display:flex;gap:4px">
               <button class="btn btn-secondary btn-sm" onclick="verFactura('${v.id}')">🧾 Ver</button>
-              ${isDueno()?`<button class="btn btn-danger btn-sm" onclick="ventaEliminar('${v.id}')">🗑</button>`:''}
+              ${can('del_ventas')?`<button class="btn btn-danger btn-sm" onclick="ventaEliminar('${v.id}')">🗑</button>`:''}
             </div></td>
           </tr>`).join('')||'<tr><td colspan="9"><div class="empty-state"><div class="empty-ico">🧾</div><p>Sin ventas registradas</p></div></td></tr>'}
         </tbody>
@@ -1158,7 +1158,7 @@ function ventaEliminar(id){
     `<p>¿Eliminar la factura <strong>#${escHtml(v.num)}</strong> de <strong>${escHtml(v.cliente||'Consumidor Final')}</strong> por <strong>${fmt(v.total)}</strong>?</p>
      <p style="margin-top:8px;font-size:12px;color:var(--red-500)">⚠️ Esta acción no se puede deshacer.</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     ${isDueno()?`<button class="btn btn-danger" onclick="ventaEliminarConfirm('${id}')">Eliminar</button>`:''}`);
+     ${can('del_ventas')?`<button class="btn btn-danger" onclick="ventaEliminarConfirm('${id}')">Eliminar</button>`:''}`);
 }
 function ventaEliminarConfirm(id){
   DB.ventas=DB.ventas.filter(x=>x.id!==id);
@@ -1356,7 +1356,7 @@ function renderProductos(){
             <td style="text-align:center">${p.minimo}</td>
             <td><div style="display:flex;gap:6px">
               <button class="btn btn-secondary btn-sm" onclick="prEditar(${i})">✏️</button>
-              ${isDueno()?`<button class="btn btn-danger btn-sm" onclick="prEliminar(${i})">🗑</button>`:''}
+              ${can('del_productos')?`<button class="btn btn-danger btn-sm" onclick="prEliminar(${i})">🗑</button>`:''}
             </div></td>
           </tr>`).join('')||'<tr><td colspan="9"><div class="empty-state"><p>Sin productos</p></div></td></tr>'}
         </tbody>
@@ -1391,7 +1391,7 @@ function prEliminar(i){
   openModal('Confirmar eliminación',
     `<p>¿Eliminar el producto <strong>${escHtml(DB.productos[i].nombre)}</strong>? Esta acción no se puede deshacer.</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     ${isDueno()?`<button class="btn btn-danger" onclick="prEliminarConfirm(${i})">Eliminar</button>`:''}`);
+     ${can('del_productos')?`<button class="btn btn-danger" onclick="prEliminarConfirm(${i})">Eliminar</button>`:''}`);
 }
 function prEliminarConfirm(i){DB.productos.splice(i,1);sDB('productos');closeModal();toast('Producto eliminado');renderProductos();}
 function prEditar(i){
@@ -1464,7 +1464,7 @@ function renderClientes(){
             <td style="font-weight:600;color:var(--green-700)">${fmt(total)}</td>
             <td><div style="display:flex;gap:6px">
               <button class="btn btn-secondary btn-sm" onclick="clEditar(${i})">✏️</button>
-              ${isDueno()?`<button class="btn btn-danger btn-sm" onclick="clEliminar(${i})">🗑</button>`:''}
+              ${can('del_clientes')?`<button class="btn btn-danger btn-sm" onclick="clEliminar(${i})">🗑</button>`:''}
             </div></td>
           </tr>`;}).join('')||'<tr><td colspan="7"><div class="empty-state"><div class="empty-ico">👤</div><p>Sin clientes registrados</p></div></td></tr>'}
         </tbody>
@@ -1513,7 +1513,7 @@ function clEditarGuardar(i){
 function clEliminar(i){
   openModal('Eliminar cliente',`<p>¿Eliminar a <strong>${escHtml(DB.clientes[i].nombre)}</strong>?</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     ${isDueno()?`<button class="btn btn-danger" onclick="DB.clientes.splice(${i},1);sDB('clientes');closeModal();toast('Cliente eliminado');renderClientes()">Eliminar</button>`:''}`);
+     ${can('del_clientes')?`<button class="btn btn-danger" onclick="DB.clientes.splice(${i},1);sDB('clientes');closeModal();toast('Cliente eliminado');renderClientes()">Eliminar</button>`:''}`);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1551,7 +1551,7 @@ function renderSuplidores(){
             <td style="font-weight:600;color:var(--amber-600)">${fmt(total)}</td>
             <td><div style="display:flex;gap:4px">
               <button class="btn btn-secondary btn-sm" onclick="suEditar(${i})">✏️</button>
-              ${isDueno()?`<button class="btn btn-danger btn-sm" onclick="suEliminar(${i})">🗑</button>`:''}
+              ${can('del_suplidores')?`<button class="btn btn-danger btn-sm" onclick="suEliminar(${i})">🗑</button>`:''}
             </div></td>
           </tr>`;}).join('')||'<tr><td colspan="7"><div class="empty-state"><div class="empty-ico">🏭</div><p>Sin suplidores registrados</p></div></td></tr>'}
         </tbody>
@@ -1600,7 +1600,7 @@ function suEditarGuardar(i){
 function suEliminar(i){
   openModal('Eliminar suplidor',`<p>¿Eliminar a <strong>${escHtml(DB.suplidores[i].nombre)}</strong>?</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     ${isDueno()?`<button class="btn btn-danger" onclick="DB.suplidores.splice(${i},1);sDB('suplidores');closeModal();toast('Suplidor eliminado');renderSuplidores()">Eliminar</button>`:''}`);
+     ${can('del_suplidores')?`<button class="btn btn-danger" onclick="DB.suplidores.splice(${i},1);sDB('suplidores');closeModal();toast('Suplidor eliminado');renderSuplidores()">Eliminar</button>`:''}`);
 }
 
 
@@ -1971,7 +1971,7 @@ function renderGastos(){
               <td style="color:var(--gray-500)">${escHtml(g.proveedor||'—')}</td>
               <td style="color:var(--gray-400);font-size:12px">${escHtml(g.comprobante||'—')}</td>
               <td style="text-align:right;font-weight:600;color:#e11d48">${fmt(g.monto)}</td>
-              <td>${isDueno()?`<button class="btn btn-danger btn-sm" onclick="gsEliminar(${i})">🗑</button>`:''}</td>
+              <td>${can('del_gastos')?`<button class="btn btn-danger btn-sm" onclick="gsEliminar(${i})">🗑</button>`:''}</td>
             </tr>`;}).join('')||'<tr><td colspan="7"><div class="empty-state"><div class="empty-ico">💸</div><p>Sin gastos registrados</p></div></td></tr>'}
           </tbody>
         </table></div>
@@ -2007,7 +2007,7 @@ function gsGuardar(){
 function gsEliminar(i){
   openModal('Eliminar gasto',`<p>¿Eliminar el gasto <strong>${escHtml(DB.gastos[i].descripcion)}</strong>?</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     ${isDueno()?`<button class="btn btn-danger" onclick="DB.gastos.splice(${i},1);sDB('gastos');closeModal();toast('Gasto eliminado');renderGastos()">Eliminar</button>`:''}`);
+     ${can('del_gastos')?`<button class="btn btn-danger" onclick="DB.gastos.splice(${i},1);sDB('gastos');closeModal();toast('Gasto eliminado');renderGastos()">Eliminar</button>`:''}`);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -2102,7 +2102,7 @@ function renderNomina(){
               <td style="color:var(--red-500)">-${fmt(desc)}</td>
               <td style="text-align:right;font-weight:600;color:#0891b2">${fmt(n.monto)}</td>
               <td><span class="badge badge-gray">${escHtml(n.metodo||'—')}</span></td>
-              <td>${isDueno()?`<button class="btn btn-danger btn-sm" onclick="nmEliminar(${i})">🗑</button>`:''}</td>
+              <td>${can('del_nomina')?`<button class="btn btn-danger btn-sm" onclick="nmEliminar(${i})">🗑</button>`:''}</td>
             </tr>`;}).join('')||'<tr><td colspan="8"><div class="empty-state"><div class="empty-ico">👷</div><p>Sin pagos registrados</p></div></td></tr>'}
           </tbody>
         </table></div>
@@ -2158,7 +2158,7 @@ function nmGuardar(){
 function nmEliminar(i){
   openModal('Eliminar pago',`<p>¿Eliminar el pago de <strong>${escHtml(DB.nomina[i].empleado)}</strong>?</p>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     ${isDueno()?`<button class="btn btn-danger" onclick="DB.nomina.splice(${i},1);sDB('nomina');closeModal();toast('Pago eliminado');renderNomina()">Eliminar</button>`:''}`);
+     ${can('del_nomina')?`<button class="btn btn-danger" onclick="DB.nomina.splice(${i},1);sDB('nomina');closeModal();toast('Pago eliminado');renderNomina()">Eliminar</button>`:''}`);
 }
 
 function nmGestionarEmpleados(){
@@ -2515,6 +2515,17 @@ const MODULOS=[
   {id:'usuarios',label:'Usuarios'},
 ];
 
+const PERMISOS_BORRAR=[
+  {id:'del_ventas',label:'🗑 Borrar Ventas'},
+  {id:'del_productos',label:'🗑 Borrar Productos'},
+  {id:'del_clientes',label:'🗑 Borrar Clientes'},
+  {id:'del_suplidores',label:'🗑 Borrar Suplidores'},
+  {id:'del_gastos',label:'🗑 Borrar Gastos'},
+  {id:'del_nomina',label:'🗑 Borrar Nómina'},
+  {id:'del_compras',label:'🗑 Borrar Compras'},
+  {id:'del_cobros',label:'🗑 Borrar Cobros'},
+];
+
 function renderUsuarios(){
   document.getElementById('page-usuarios').innerHTML=`
     ${pageHeader('usuarios','Usuarios y Permisos','Gestiona el acceso al sistema')}
@@ -2543,6 +2554,14 @@ function renderUsuarios(){
             </label>`).join('')}
         </div>
       </div>
+      <div class="form-field" style="margin-top:8px"><label style="color:var(--red-600)">🗑 Permisos de borrar</label>
+        <div class="perm-grid" id="perm-grid-del">
+          ${PERMISOS_BORRAR.map(m=>`
+            <label class="perm-item" id="pni-${m.id}" onclick="togglePerm('pni-${m.id}','perm-${m.id}')">
+              <input type="checkbox" id="perm-${m.id}" value="${m.id}"> ${m.label}
+            </label>`).join('')}
+        </div>
+      </div>
       <div class="btn-row">${isAdmin()?`<button class="btn btn-primary" onclick="usGuardar()">💾 Crear usuario</button>`:''}</div>
     </div>
     <div class="card">
@@ -2557,7 +2576,7 @@ function renderUsuarios(){
             <td style="max-width:200px">${(u.permisos||[]).map(p=>`<span class="badge badge-green" style="margin:2px;font-size:10px">${escHtml(MODULOS.find(m=>m.id===p)?.label||p)}</span>`).join('')}</td>
             <td><div style="display:flex;gap:6px">
               <button class="btn btn-secondary btn-sm" onclick="usEditar(${i})">✏️ Editar</button>
-              <button class="btn btn-amber btn-sm" onclick="usEditarPermisos(${i})">🔑 Permisos</button>
+              ${isAdmin()?`<button class="btn btn-amber btn-sm" onclick="usEditarPermisos(${i})">🔑 Permisos</button>`:''}
               ${(isAdmin()&&u.id!=='u1')?`<button class="btn btn-danger btn-sm" onclick="usEliminar(${i})">🗑</button>`:''}
             </div></td>
           </tr>`).join('')}
@@ -2581,7 +2600,7 @@ function usGuardar(){
   const role=document.getElementById('us-role').value;
   if(!nom||!user||!pass){toast('Completa todos los campos','error');return;}
   if(DB.users.find(u=>u.username===user)){toast('Ese nombre de usuario ya existe','error');return;}
-  const permisos=MODULOS.filter(m=>document.getElementById('perm-'+m.id)?.checked).map(m=>m.id);
+  const permisos=[...MODULOS,...PERMISOS_BORRAR].filter(m=>document.getElementById('perm-'+m.id)?.checked).map(m=>m.id);
   if(!permisos.includes('dashboard'))permisos.unshift('dashboard');
   DB.users.push({id:uid(),username:user,password:pass,nombre:nom,role:role,permisos});
   sDB('users');toast('Usuario creado ✓');renderUsuarios();
@@ -2634,12 +2653,20 @@ function usEditarPermisos(i){
       <label class="perm-item ${u.permisos.includes(m.id)?'checked':''}" id="ep-${m.id}" onclick="togglePerm('ep-${m.id}','epc-${m.id}')">
         <input type="checkbox" id="epc-${m.id}" value="${m.id}" ${u.permisos.includes(m.id)?'checked':''}> ${m.label}
       </label>`).join('')}
+    </div>
+    <div style="margin-top:12px;border-top:1px solid #e5e7eb;padding-top:10px">
+      <div style="font-size:11px;font-weight:700;color:#dc2626;margin-bottom:8px;text-transform:uppercase">🗑 Permisos de borrar</div>
+      <div class="perm-grid">${PERMISOS_BORRAR.map(m=>`
+        <label class="perm-item ${u.permisos.includes(m.id)?'checked':''}" id="ep-${m.id}" onclick="togglePerm('ep-${m.id}','epc-${m.id}')">
+          <input type="checkbox" id="epc-${m.id}" value="${m.id}" ${u.permisos.includes(m.id)?'checked':''}> ${m.label}
+        </label>`).join('')}
+      </div>
     </div>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
      <button class="btn btn-primary" onclick="usGuardarPermisos(${i})">Guardar permisos</button>`);
 }
 function usGuardarPermisos(i){
-  const permisos=MODULOS.filter(m=>document.getElementById('epc-'+m.id)?.checked).map(m=>m.id);
+  const permisos=[...MODULOS,...PERMISOS_BORRAR].filter(m=>document.getElementById('epc-'+m.id)?.checked).map(m=>m.id);
   if(!permisos.includes('dashboard'))permisos.unshift('dashboard');
   DB.users[i].permisos=permisos;
   sDB('users');
