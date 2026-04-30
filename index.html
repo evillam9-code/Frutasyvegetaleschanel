@@ -912,20 +912,49 @@ function fmtTel(inp){
   else if(v.length>3) v = v.slice(0,3)+'-'+v.slice(3);
   inp.value = v;
 }
-// Activar en todos los campos tipo tel al renderizar
-function activarFmtTel(){
+
+// ── AUTOFORMATO RNC / CÉDULA dominicana ──
+function fmtRNC(inp){
+  const tipo = inp.dataset.tipo || 'cedula';
+  let d = inp.value.replace(/\D/g,'');
+  if(tipo === 'rnc'){
+    d = d.slice(0,9);
+    let v = d;
+    if(d.length>7)      v = d.slice(0,1)+'-'+d.slice(1,3)+'-'+d.slice(3,8)+'-'+d.slice(8);
+    else if(d.length>3) v = d.slice(0,1)+'-'+d.slice(1,3)+'-'+d.slice(3);
+    else if(d.length>1) v = d.slice(0,1)+'-'+d.slice(1);
+    inp.maxLength = 13; inp.value = v;
+  } else {
+    d = d.slice(0,11);
+    let v = d;
+    if(d.length>10)     v = d.slice(0,3)+'-'+d.slice(3,10)+'-'+d.slice(10);
+    else if(d.length>3) v = d.slice(0,3)+'-'+d.slice(3);
+    inp.maxLength = 13; inp.value = v;
+  }
+}
+
+function actualizarPlaceholderRNC(sel, inp){
+  if(!inp) return;
+  const tipo = sel.value;
+  inp.dataset.tipo = tipo;
+  inp.placeholder = tipo==='rnc' ? '1-30-12345-6' : '001-0000000-0';
+  inp.maxLength = 13;
+  inp.value = '';
+  inp.focus();
+}
+
+// Activar listeners en todos los campos de teléfono y RNC del DOM
+function activarFmtCampos(){
   document.querySelectorAll('input[type="tel"]').forEach(inp=>{
-    if(!inp._telFmt){
-      inp._telFmt = true;
-      inp.addEventListener('input', ()=>fmtTel(inp));
-    }
+    if(!inp._telFmt){ inp._telFmt=true; inp.addEventListener('input',()=>fmtTel(inp)); }
+  });
+  document.querySelectorAll('input[data-rnc]').forEach(inp=>{
+    if(!inp._rncFmt){ inp._rncFmt=true; inp.addEventListener('input',()=>fmtRNC(inp)); }
   });
 }
-// Observer para activar en campos que se crean dinámicamente (modales)
-const _telObserver = new MutationObserver(()=>activarFmtTel());
-document.addEventListener('DOMContentLoaded',()=>{
-  _telObserver.observe(document.body,{childList:true,subtree:true});
-});
+// Activar cada vez que el DOM cambia (modales y páginas dinámicas)
+new MutationObserver(activarFmtCampos)
+  .observe(document.documentElement,{childList:true,subtree:true});
 
 function validarCampos(campos){
   let ok=true;
@@ -1607,11 +1636,25 @@ function renderClientes(){
       <div class="card-title"><span class="ico">➕</span>Nuevo cliente</div>
       <div class="form-row c3">
         <div class="form-field"><label class="required">Nombre completo</label><input type="text" id="cl-nom" placeholder="Nombre completo"></div>
-        <div class="form-field"><label class="required">Teléfono</label><input type="text" id="cl-tel" type="tel" maxlength="12" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}" title="Formato: 809-000-0000" placeholder="809-000-0000"></div>
+        <div class="form-field">
+          <label class="required">Teléfono</label>
+          <input type="tel" id="cl-tel" maxlength="12" placeholder="809-000-0000" oninput="fmtTel(this)">
+        </div>
         <div class="form-field"><label>Correo electrónico</label><input type="email" id="cl-cor" placeholder="correo@email.com"></div>
       </div>
       <div class="form-row c3">
-        <div class="form-field"><label>RNC / Cédula</label><input type="text" id="cl-rnc" maxlength="13" placeholder="001-0000000-0"></div>
+        <div class="form-field">
+          <label>Tipo de documento</label>
+          <div style="display:flex;gap:6px">
+            <select id="cl-tipo" onchange="actualizarPlaceholderRNC(this,document.getElementById('cl-rnc'))"
+              style="width:95px;padding:9px 8px;border:1.5px solid var(--gray-200);border-radius:var(--radius-md);font-size:13px;font-family:'DM Sans',sans-serif;color:var(--gray-900);background:var(--gray-50);flex-shrink:0">
+              <option value="cedula">Cédula</option>
+              <option value="rnc">RNC</option>
+            </select>
+            <input type="text" id="cl-rnc" data-rnc="1" data-tipo="cedula"
+              maxlength="13" placeholder="001-0000000-0" oninput="fmtRNC(this)" style="flex:1">
+          </div>
+        </div>
         <div class="form-field"><label>Dirección</label><input type="text" id="cl-dir" placeholder="Dirección"></div>
         <div class="form-field"><label>Notas</label><input type="text" id="cl-not" placeholder="Opcional"></div>
       </div>
@@ -1625,7 +1668,7 @@ function renderClientes(){
           const total=DB.ventas.filter(v=>v.cliente===c.nombre).reduce((a,v)=>a+parseFloat(v.total||0),0);
           return `<tr>
             <td style="font-weight:500">${escHtml(c.nombre)}</td>
-            <td style="font-family:monospace;font-size:12px;color:var(--gray-500)">${escHtml(c.rnc||'—')}</td>
+            <td style="font-family:monospace;font-size:12px;color:var(--gray-500)">${c.rnc?`<span style="font-size:10px;font-family:'DM Sans',sans-serif;background:var(--gray-100);color:var(--gray-600);padding:1px 5px;border-radius:3px;margin-right:3px">${c.tipoDoc==='rnc'?'RNC':'CÉD'}</span>${escHtml(c.rnc)}`:'—'}</td>
             <td>${escHtml(c.tel||'—')}</td>
             <td style="color:var(--gray-500)">${escHtml(c.correo||'—')}</td>
             <td style="color:var(--gray-500)">${escHtml(c.dir||'—')}</td>
@@ -1646,6 +1689,7 @@ function clGuardar(){
   if(DB.clientes.find(c=>c.nombre.toLowerCase()===nom.toLowerCase())){toast('Ya existe un cliente con ese nombre','error');return;}
   if(rnc && DB.clientes.find(c=>c.rnc&&c.rnc===rnc)){toast('Ya existe un cliente con ese RNC/Cédula','error');return;}
   DB.clientes.push({id:uid(),nombre:nom,
+    tipoDoc:document.getElementById('cl-tipo')?.value||'cedula',
     rnc:document.getElementById('cl-rnc').value.trim(),
     tel:document.getElementById('cl-tel').value,
     correo:document.getElementById('cl-cor').value,
@@ -1656,11 +1700,28 @@ function clGuardar(){
 
 function clEditar(i){
   const c=DB.clientes[i];
+  const tipoDoc=c.tipoDoc||'cedula';
   openModal('Editar cliente',`
     <div class="form-field"><label class="required">Nombre completo</label><input type="text" id="ec-nom" value="${escHtml(c.nombre)}"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
-      <div class="form-field"><label class="required">Teléfono</label><input type="text" id="ec-tel" type="tel" maxlength="12" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}" title="Formato: 809-000-0000" value="${escHtml(c.tel||'')}"></div>
-      <div class="form-field"><label>RNC / Cédula</label><input type="text" id="ec-rnc" value="${escHtml(c.rnc||'')}" placeholder="001-0000000-0" maxlength="13"></div>
+      <div class="form-field">
+        <label class="required">Teléfono</label>
+        <input type="tel" id="ec-tel" maxlength="12" placeholder="809-000-0000"
+          oninput="fmtTel(this)" value="${escHtml(c.tel||'')}">
+      </div>
+      <div class="form-field">
+        <label>Tipo de documento</label>
+        <div style="display:flex;gap:6px">
+          <select id="ec-tipo" onchange="actualizarPlaceholderRNC(this,document.getElementById('ec-rnc'))"
+            style="width:95px;padding:9px 8px;border:1.5px solid var(--gray-200);border-radius:var(--radius-md);font-size:13px;font-family:'DM Sans',sans-serif;color:var(--gray-900);background:var(--gray-50);flex-shrink:0">
+            <option value="cedula" ${tipoDoc==='cedula'?'selected':''}>Cédula</option>
+            <option value="rnc" ${tipoDoc==='rnc'?'selected':''}>RNC</option>
+          </select>
+          <input type="text" id="ec-rnc" data-rnc="1" data-tipo="${tipoDoc}"
+            maxlength="13" placeholder="${tipoDoc==='rnc'?'1-30-12345-6':'001-0000000-0'}"
+            oninput="fmtRNC(this)" value="${escHtml(c.rnc||'')}" style="flex:1">
+        </div>
+      </div>
     </div>
     <div class="form-field" style="margin-top:10px"><label>Correo electrónico</label><input type="email" id="ec-cor" value="${escHtml(c.correo||'')}"></div>
     <div class="form-field" style="margin-top:10px"><label>Dirección</label><input type="text" id="ec-dir" value="${escHtml(c.dir||'')}"></div>
@@ -1672,6 +1733,7 @@ function clEditarGuardar(i){
   if(!validarCampos(['ec-nom','ec-tel']))return;
   DB.clientes[i].nombre=document.getElementById('ec-nom').value.trim();
   DB.clientes[i].tel=document.getElementById('ec-tel').value.trim();
+  DB.clientes[i].tipoDoc=document.getElementById('ec-tipo')?.value||'cedula';
   DB.clientes[i].rnc=document.getElementById('ec-rnc').value.trim();
   DB.clientes[i].correo=document.getElementById('ec-cor').value.trim();
   DB.clientes[i].dir=document.getElementById('ec-dir').value.trim();
@@ -1694,8 +1756,22 @@ function renderSuplidores(){
       <div class="card-title"><span class="ico">➕</span>Nuevo suplidor</div>
       <div class="form-row c3">
         <div class="form-field"><label class="required">Nombre / Empresa</label><input type="text" id="su-nom" placeholder="Nombre del suplidor"></div>
-        <div class="form-field"><label>RNC / Cédula</label><input type="text" id="su-rnc" maxlength="13" placeholder="1-30-12345-6"></div>
-        <div class="form-field"><label>Teléfono</label><input type="text" id="su-tel" type="tel" maxlength="12" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}" title="Formato: 809-000-0000" placeholder="809-000-0000"></div>
+        <div class="form-field">
+          <label>Tipo de documento</label>
+          <div style="display:flex;gap:6px">
+            <select id="su-tipo" onchange="actualizarPlaceholderRNC(this,document.getElementById('su-rnc'))"
+              style="width:95px;padding:9px 8px;border:1.5px solid var(--gray-200);border-radius:var(--radius-md);font-size:13px;font-family:'DM Sans',sans-serif;color:var(--gray-900);background:var(--gray-50);flex-shrink:0">
+              <option value="rnc" selected>RNC</option>
+              <option value="cedula">Cédula</option>
+            </select>
+            <input type="text" id="su-rnc" data-rnc="1" data-tipo="rnc"
+              maxlength="13" placeholder="1-30-12345-6" oninput="fmtRNC(this)" style="flex:1">
+          </div>
+        </div>
+        <div class="form-field">
+          <label>Teléfono</label>
+          <input type="tel" id="su-tel" maxlength="12" placeholder="809-000-0000" oninput="fmtTel(this)">
+        </div>
       </div>
       <div class="form-row c3">
         <div class="form-field"><label>Correo</label><input type="email" id="su-cor" placeholder="correo@email.com"></div>
@@ -1712,7 +1788,7 @@ function renderSuplidores(){
           const total=DB.compras.filter(c=>c.suplidor===s.nombre).reduce((a,c)=>a+(parseFloat(c.cantidad||0)*parseFloat(c.precio||0)),0);
           return `<tr>
             <td style="font-weight:500">${escHtml(s.nombre)}</td>
-            <td style="font-family:monospace;font-size:12px;color:var(--gray-500)">${escHtml(s.rnc||'—')}</td>
+            <td style="font-family:monospace;font-size:12px;color:var(--gray-500)">${s.rnc?`<span style="font-size:10px;font-family:'DM Sans',sans-serif;background:var(--gray-100);color:var(--gray-600);padding:1px 5px;border-radius:3px;margin-right:3px">${s.tipoDoc==='rnc'?'RNC':'CÉD'}</span>${escHtml(s.rnc)}`:'—'}</td>
             <td>${escHtml(s.tel||'—')}</td>
             <td style="color:var(--gray-500)">${escHtml(s.correo||'—')}</td>
             <td style="color:var(--gray-500)">${escHtml(s.productos||'—')}</td>
@@ -1733,6 +1809,7 @@ function suGuardar(){
   if(DB.suplidores.find(s=>s.nombre.toLowerCase()===nom.toLowerCase())){toast('Ya existe un suplidor con ese nombre','error');return;}
   if(rnc && DB.suplidores.find(s=>s.rnc&&s.rnc===rnc)){toast('Ya existe un suplidor con ese RNC','error');return;}
   DB.suplidores.push({id:uid(),nombre:nom,
+    tipoDoc:document.getElementById('su-tipo')?.value||'rnc',
     rnc:document.getElementById('su-rnc').value.trim(),
     tel:document.getElementById('su-tel').value,
     correo:document.getElementById('su-cor').value,
@@ -1742,11 +1819,28 @@ function suGuardar(){
 }
 function suEditar(i){
   const s=DB.suplidores[i];
+  const tipoDoc=s.tipoDoc||'rnc';
   openModal('Editar suplidor',`
     <div class="form-field"><label class="required">Nombre / Empresa</label><input type="text" id="es-nom" value="${escHtml(s.nombre)}"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
-      <div class="form-field"><label>RNC / Cédula</label><input type="text" id="es-rnc" value="${escHtml(s.rnc||'')}" maxlength="13" placeholder="1-30-12345-6"></div>
-      <div class="form-field"><label>Teléfono</label><input type="text" id="es-tel" type="tel" maxlength="12" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}" title="Formato: 809-000-0000" value="${escHtml(s.tel||'')}"></div>
+      <div class="form-field">
+        <label>Tipo de documento</label>
+        <div style="display:flex;gap:6px">
+          <select id="es-tipo" onchange="actualizarPlaceholderRNC(this,document.getElementById('es-rnc'))"
+            style="width:95px;padding:9px 8px;border:1.5px solid var(--gray-200);border-radius:var(--radius-md);font-size:13px;font-family:'DM Sans',sans-serif;color:var(--gray-900);background:var(--gray-50);flex-shrink:0">
+            <option value="rnc" ${tipoDoc==='rnc'?'selected':''}>RNC</option>
+            <option value="cedula" ${tipoDoc==='cedula'?'selected':''}>Cédula</option>
+          </select>
+          <input type="text" id="es-rnc" data-rnc="1" data-tipo="${tipoDoc}"
+            maxlength="13" placeholder="${tipoDoc==='rnc'?'1-30-12345-6':'001-0000000-0'}"
+            oninput="fmtRNC(this)" value="${escHtml(s.rnc||'')}" style="flex:1">
+        </div>
+      </div>
+      <div class="form-field">
+        <label>Teléfono</label>
+        <input type="tel" id="es-tel" maxlength="12" placeholder="809-000-0000"
+          oninput="fmtTel(this)" value="${escHtml(s.tel||'')}">
+      </div>
     </div>
     <div class="form-field" style="margin-top:10px"><label>Correo</label><input type="email" id="es-cor" value="${escHtml(s.correo||'')}"></div>
     <div class="form-field" style="margin-top:10px"><label>Productos que suple</label><input type="text" id="es-pro" value="${escHtml(s.productos||'')}"></div>
@@ -1758,6 +1852,7 @@ function suEditarGuardar(i){
   const nom=document.getElementById('es-nom').value.trim();
   if(!nom){toast('El nombre es requerido','error');return;}
   DB.suplidores[i].nombre=nom;
+  DB.suplidores[i].tipoDoc=document.getElementById('es-tipo')?.value||'rnc';
   DB.suplidores[i].rnc=document.getElementById('es-rnc').value.trim();
   DB.suplidores[i].tel=document.getElementById('es-tel').value.trim();
   DB.suplidores[i].correo=document.getElementById('es-cor').value.trim();
@@ -3169,7 +3264,7 @@ function renderConfig() {
           <input type="text" id="cf-slogan" value="${escHtml(c.slogan)}" placeholder="Tu slogan aquí">
         </div>
         <div class="form-field"><label>Teléfono</label>
-          <input type="text" id="cf-tel" type="tel" maxlength="12" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}" title="Formato: 809-000-0000" value="${escHtml(c.telefono)}" placeholder="809-000-0000">
+          <input type="tel" id="cf-tel" maxlength="12" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}" title="Formato: 809-000-0000" value="${escHtml(c.telefono)}" placeholder="809-000-0000">
         </div>
         <div class="form-field"><label>Dirección</label>
           <input type="text" id="cf-dir" value="${escHtml(c.direccion)}" placeholder="Tu dirección">
@@ -3676,7 +3771,7 @@ function facHtml(v){
       <div class="fac-dato-row">
         <span class="fac-dato-label">Nombre</span>
         <span class="fac-dato-val">${escHtml(v.cliente||'Consumidor Final')}</span>
-        ${cliObj.rnc?`<span style="font-size:10px;color:#6b7280;margin-left:8px">Cédula/RNC: ${escHtml(cliObj.rnc)}</span>`:''}
+        ${cliObj.rnc?`<span style="font-size:10px;color:#6b7280;margin-left:8px">${cliObj.tipoDoc==='rnc'?'RNC':'Cédula'}: ${escHtml(cliObj.rnc)}</span>`:''}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="fac-dato-row">
