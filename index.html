@@ -306,46 +306,51 @@ tbody tr:hover td{background:var(--gray-50)}
 
     // ── Sincronización en TIEMPO REAL ──
     window.fbListeners = [];
+    window._fbLastSaved = {};   // marca los docs que acabamos de guardar nosotros
+
     window.fbActivarSync = function() {
-      const cols = ['ventas','compras','clientes','suplidores','productos','gastos','nomina','config'];
+      const cols = ['ventas','compras','clientes','suplidores','productos','gastos','nomina','users','config'];
       cols.forEach(col => {
         const unsub = fbDB.collection('negocio').doc(col).onSnapshot(snap => {
           if(!snap.exists || !window.currentUser) return;
+
+          // Si acabamos de guardar nosotros este doc en los últimos 3 s, ignorar el eco
+          const ahora = Date.now();
+          if(window._fbLastSaved[col] && (ahora - window._fbLastSaved[col]) < 3000) return;
+
           try {
             const datos = JSON.parse(snap.data().datos);
-            // Solo actualizar si cambiaron desde otro origen
-            const local = localStorage.getItem('fv2_'+col);
-            const localStr = JSON.stringify(datos);
-            if(local !== localStr) {
-              localStorage.setItem('fv2_'+col, localStr);
-              if(window.DB) {
-                window.DB[col] = datos;
-                // Refrescar la vista activa si corresponde
-                const paginaActual = document.querySelector('.page.active')?.id;
-                if(paginaActual) {
-                  const refreshMap = {
-                    'page-ventas': ()=>{ if(window.renderVentas) renderVentas(); },
-                    'page-compras': ()=>{ if(window.renderCompras) renderCompras(); },
-                    'page-cobros': ()=>{ if(window.renderCobros) renderCobros(); },
-                    'page-cxp': ()=>{ if(window.renderCxP) renderCxP(); },
-                    'page-clientes': ()=>{ if(window.renderClientes) renderClientes(); },
-                    'page-suplidores': ()=>{ if(window.renderSuplidores) renderSuplidores(); },
-                    'page-productos': ()=>{ if(window.renderProductos) renderProductos(); },
-                    'page-gastos': ()=>{ if(window.renderGastos) renderGastos(); },
-                    'page-nomina': ()=>{ if(window.renderNomina) renderNomina(); },
-                    'page-dashboard': ()=>{ if(window.renderDashboard) renderDashboard(); },
-                  };
-                  if(refreshMap[paginaActual]) refreshMap[paginaActual]();
-                  // Mostrar indicador de actualización
-                  const t = document.getElementById('toast');
-                  if(t && !t.classList.contains('show')){
-                    t.textContent = '🔄 Datos actualizados en tiempo real';
-                    t.className = 'toast show success';
-                    clearTimeout(t._to2);
-                    t._to2 = setTimeout(()=>t.classList.remove('show'), 2000);
-                  }
-                }
-              }
+            // Actualizar memoria y localStorage siempre
+            localStorage.setItem('fv2_'+col, JSON.stringify(datos));
+            if(window.DB) window.DB[col] = datos;
+
+            // Refrescar la vista activa que corresponda
+            const paginaActual = document.querySelector('.page.active')?.id;
+            const refreshMap = {
+              'page-ventas':     ()=>renderVentas&&renderVentas(),
+              'page-compras':    ()=>renderCompras&&renderCompras(),
+              'page-cobros':     ()=>renderCobros&&renderCobros(),
+              'page-cxp':        ()=>renderCxP&&renderCxP(),
+              'page-clientes':   ()=>renderClientes&&renderClientes(),
+              'page-suplidores': ()=>renderSuplidores&&renderSuplidores(),
+              'page-productos':  ()=>renderProductos&&renderProductos(),
+              'page-gastos':     ()=>renderGastos&&renderGastos(),
+              'page-nomina':     ()=>renderNomina&&renderNomina(),
+              'page-dashboard':  ()=>renderDashboard&&renderDashboard(),
+              'page-usuarios':   ()=>renderUsuarios&&renderUsuarios(),
+              'page-inventario': ()=>renderInventario&&renderInventario(),
+              'page-caja':       ()=>renderCaja&&renderCaja(),
+              'page-informes':   ()=>renderInformes&&renderInformes(),
+            };
+            if(paginaActual && refreshMap[paginaActual]) refreshMap[paginaActual]();
+
+            // Indicador visual discreto
+            const t = document.getElementById('toast');
+            if(t && !t.classList.contains('show')){
+              t.textContent = '🔄 Sincronizado';
+              t.className = 'toast show success';
+              clearTimeout(t._syncTo);
+              t._syncTo = setTimeout(()=>t.classList.remove('show'), 1500);
             }
           } catch(e){ console.warn('Sync error:', col, e); }
         });
@@ -538,13 +543,15 @@ let DB = {
   empleados: ls('empleados') || [],
 };
 function sDB(k){
-  ss(k,DB[k]);
+  ss(k, DB[k]);
+  // Marcar que nosotros guardamos este doc ahora (evita que el onSnapshot lo trate como cambio remoto)
+  if(window._fbLastSaved) window._fbLastSaved[k] = Date.now();
   // Guardar en Firebase
   try {
     if(window.fbDB) {
       window.fbDB.collection('negocio').doc(k).set({datos: JSON.stringify(DB[k])})
-        .then(()=>console.log('FB guardado: '+k))
-        .catch(e=>console.warn('FB error:',e));
+        .then(()=> console.log('FB guardado: '+k))
+        .catch(e=> console.warn('FB error:',e));
     }
   } catch(e){ console.warn('FB sDB error:',e); }
 }
@@ -898,6 +905,28 @@ function pageHeader(id, titulo, subtitulo){
 }
 
 // ── VALIDACIÓN DE CAMPOS REQUERIDOS ──
+// ── AUTOFORMATO TELÉFONO dominicano (809-000-0000) ──
+function fmtTel(inp){
+  let v = inp.value.replace(/\D/g,'').slice(0,10);
+  if(v.length>6) v = v.slice(0,3)+'-'+v.slice(3,6)+'-'+v.slice(6);
+  else if(v.length>3) v = v.slice(0,3)+'-'+v.slice(3);
+  inp.value = v;
+}
+// Activar en todos los campos tipo tel al renderizar
+function activarFmtTel(){
+  document.querySelectorAll('input[type="tel"]').forEach(inp=>{
+    if(!inp._telFmt){
+      inp._telFmt = true;
+      inp.addEventListener('input', ()=>fmtTel(inp));
+    }
+  });
+}
+// Observer para activar en campos que se crean dinámicamente (modales)
+const _telObserver = new MutationObserver(()=>activarFmtTel());
+document.addEventListener('DOMContentLoaded',()=>{
+  _telObserver.observe(document.body,{childList:true,subtree:true});
+});
+
 function validarCampos(campos){
   let ok=true;
   campos.forEach(id=>{
@@ -1578,11 +1607,11 @@ function renderClientes(){
       <div class="card-title"><span class="ico">➕</span>Nuevo cliente</div>
       <div class="form-row c3">
         <div class="form-field"><label class="required">Nombre completo</label><input type="text" id="cl-nom" placeholder="Nombre completo"></div>
-        <div class="form-field"><label class="required">Teléfono</label><input type="text" id="cl-tel" placeholder="809-000-0000"></div>
+        <div class="form-field"><label class="required">Teléfono</label><input type="text" id="cl-tel" type="tel" maxlength="12" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}" title="Formato: 809-000-0000" placeholder="809-000-0000"></div>
         <div class="form-field"><label>Correo electrónico</label><input type="email" id="cl-cor" placeholder="correo@email.com"></div>
       </div>
       <div class="form-row c3">
-        <div class="form-field"><label>RNC / Cédula</label><input type="text" id="cl-rnc" placeholder="Ej: 001-0000000-0 o 402-1234567-0" maxlength="20"></div>
+        <div class="form-field"><label>RNC / Cédula</label><input type="text" id="cl-rnc" maxlength="13" placeholder="001-0000000-0"></div>
         <div class="form-field"><label>Dirección</label><input type="text" id="cl-dir" placeholder="Dirección"></div>
         <div class="form-field"><label>Notas</label><input type="text" id="cl-not" placeholder="Opcional"></div>
       </div>
@@ -1630,8 +1659,8 @@ function clEditar(i){
   openModal('Editar cliente',`
     <div class="form-field"><label class="required">Nombre completo</label><input type="text" id="ec-nom" value="${escHtml(c.nombre)}"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
-      <div class="form-field"><label class="required">Teléfono</label><input type="text" id="ec-tel" value="${escHtml(c.tel||'')}"></div>
-      <div class="form-field"><label>RNC / Cédula</label><input type="text" id="ec-rnc" value="${escHtml(c.rnc||'')}" placeholder="001-0000000-0" maxlength="20"></div>
+      <div class="form-field"><label class="required">Teléfono</label><input type="text" id="ec-tel" type="tel" maxlength="12" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}" title="Formato: 809-000-0000" value="${escHtml(c.tel||'')}"></div>
+      <div class="form-field"><label>RNC / Cédula</label><input type="text" id="ec-rnc" value="${escHtml(c.rnc||'')}" placeholder="001-0000000-0" maxlength="13"></div>
     </div>
     <div class="form-field" style="margin-top:10px"><label>Correo electrónico</label><input type="email" id="ec-cor" value="${escHtml(c.correo||'')}"></div>
     <div class="form-field" style="margin-top:10px"><label>Dirección</label><input type="text" id="ec-dir" value="${escHtml(c.dir||'')}"></div>
@@ -1665,8 +1694,8 @@ function renderSuplidores(){
       <div class="card-title"><span class="ico">➕</span>Nuevo suplidor</div>
       <div class="form-row c3">
         <div class="form-field"><label class="required">Nombre / Empresa</label><input type="text" id="su-nom" placeholder="Nombre del suplidor"></div>
-        <div class="form-field"><label>RNC / Cédula</label><input type="text" id="su-rnc" placeholder="Ej: 1-30-12345-6" maxlength="20"></div>
-        <div class="form-field"><label>Teléfono</label><input type="text" id="su-tel" placeholder="809-000-0000"></div>
+        <div class="form-field"><label>RNC / Cédula</label><input type="text" id="su-rnc" maxlength="13" placeholder="1-30-12345-6"></div>
+        <div class="form-field"><label>Teléfono</label><input type="text" id="su-tel" type="tel" maxlength="12" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}" title="Formato: 809-000-0000" placeholder="809-000-0000"></div>
       </div>
       <div class="form-row c3">
         <div class="form-field"><label>Correo</label><input type="email" id="su-cor" placeholder="correo@email.com"></div>
@@ -1716,8 +1745,8 @@ function suEditar(i){
   openModal('Editar suplidor',`
     <div class="form-field"><label class="required">Nombre / Empresa</label><input type="text" id="es-nom" value="${escHtml(s.nombre)}"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
-      <div class="form-field"><label>RNC / Cédula</label><input type="text" id="es-rnc" value="${escHtml(s.rnc||'')}" maxlength="20"></div>
-      <div class="form-field"><label>Teléfono</label><input type="text" id="es-tel" value="${escHtml(s.tel||'')}"></div>
+      <div class="form-field"><label>RNC / Cédula</label><input type="text" id="es-rnc" value="${escHtml(s.rnc||'')}" maxlength="13" placeholder="1-30-12345-6"></div>
+      <div class="form-field"><label>Teléfono</label><input type="text" id="es-tel" type="tel" maxlength="12" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}" title="Formato: 809-000-0000" value="${escHtml(s.tel||'')}"></div>
     </div>
     <div class="form-field" style="margin-top:10px"><label>Correo</label><input type="email" id="es-cor" value="${escHtml(s.correo||'')}"></div>
     <div class="form-field" style="margin-top:10px"><label>Productos que suple</label><input type="text" id="es-pro" value="${escHtml(s.productos||'')}"></div>
@@ -3140,7 +3169,7 @@ function renderConfig() {
           <input type="text" id="cf-slogan" value="${escHtml(c.slogan)}" placeholder="Tu slogan aquí">
         </div>
         <div class="form-field"><label>Teléfono</label>
-          <input type="text" id="cf-tel" value="${escHtml(c.telefono)}" placeholder="809-000-0000">
+          <input type="text" id="cf-tel" type="tel" maxlength="12" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}" title="Formato: 809-000-0000" value="${escHtml(c.telefono)}" placeholder="809-000-0000">
         </div>
         <div class="form-field"><label>Dirección</label>
           <input type="text" id="cf-dir" value="${escHtml(c.direccion)}" placeholder="Tu dirección">
