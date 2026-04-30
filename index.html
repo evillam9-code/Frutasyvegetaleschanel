@@ -791,6 +791,11 @@ function buildNav(){
     b.onclick=()=>showPage(p.id);
     nav.appendChild(b);
   });
+
+  // Re-aplicar colores del menú después de regenerar botones
+  if(DB.config && (DB.config.menuText || DB.config.menuBg || DB.config.menuActive)) {
+    setTimeout(()=>{ if(window.applyConfig) applyConfig(); }, 10);
+  }
 }
 
 function toggleSidebar(){
@@ -842,9 +847,20 @@ function showPage(id){
     return;
   }
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>{
+    b.classList.remove('active');
+    b.style.background='';
+    // Restaurar color de texto del menú
+    if(DB.config?.menuText) b.style.color = DB.config.menuText+'aa';
+  });
   document.getElementById('page-'+id).classList.add('active');
-  const nb=document.getElementById('nav-'+id);if(nb)nb.classList.add('active');
+  const nb=document.getElementById('nav-'+id);
+  if(nb){
+    nb.classList.add('active');
+    // Aplicar color activo personalizado
+    if(DB.config?.menuActive) nb.style.background = DB.config.menuActive;
+    if(DB.config?.menuText) nb.style.color = DB.config.menuText;
+  }
   const renders={
     dashboard:renderDashboard,factura:renderFactura,ventas:renderVentas,
     compras:renderCompras,inventario:renderInventario,productos:renderProductos,
@@ -3035,23 +3051,39 @@ DB.config = ls('config') || defaultConfig;
 
 function applyConfig() {
   const c = DB.config;
-  // Colores principales
-  document.documentElement.style.setProperty('--green-700', c.colorPrimary);
-  document.documentElement.style.setProperty('--green-500', c.colorAccent);
-  document.documentElement.style.setProperty('--green-600', c.colorAccent);
-  document.documentElement.style.setProperty('--green-800', c.colorPrimary);
-  document.documentElement.style.setProperty('--green-900', c.colorPrimary);
-  // Colores del menú lateral
+  // Colores principales CSS
+  document.documentElement.style.setProperty('--green-700', c.colorPrimary || '#1a6b3c');
+  document.documentElement.style.setProperty('--green-500', c.colorAccent  || '#2da84e');
+  document.documentElement.style.setProperty('--green-600', c.colorAccent  || '#2da84e');
+  document.documentElement.style.setProperty('--green-800', c.colorPrimary || '#1a6b3c');
+  document.documentElement.style.setProperty('--green-900', c.colorPrimary || '#0a2e1a');
+
+  // Colores del sidebar
   const sidebar = document.getElementById('sidebar');
-  if(sidebar && c.menuBg) sidebar.style.background = c.menuBg;
+  if(sidebar){
+    if(c.menuBg) sidebar.style.background = c.menuBg;
+    // Header y sección de usuario dentro del sidebar también
+    sidebar.querySelectorAll('.sidebar-header,.sidebar-user').forEach(el=>{
+      if(c.menuBg) el.style.borderColor = 'rgba(255,255,255,0.1)';
+    });
+  }
   if(c.menuText){
-    document.querySelectorAll('.nav-btn').forEach(b=>{ b.style.color = c.menuText+'aa'; });
-    document.querySelectorAll('.sidebar-section').forEach(s=>s.style.color = c.menuText+'55');
+    document.querySelectorAll('.nav-btn').forEach(b=>{
+      b.style.color = c.menuText + 'aa';
+    });
+    document.querySelectorAll('.nav-btn.active').forEach(b=>{
+      b.style.color = c.menuText;
+    });
+    document.querySelectorAll('.sidebar-section').forEach(s=>s.style.color = c.menuText+'44');
     document.querySelectorAll('.user-name').forEach(u=>u.style.color = c.menuText);
     document.querySelectorAll('.user-role').forEach(u=>u.style.color = c.menuText+'66');
+    const logoText = document.getElementById('sidebar-logo-text');
+    if(logoText) logoText.style.color = c.menuText;
   }
   if(c.menuActive){
-    document.querySelectorAll('.nav-btn.active').forEach(b=>b.style.background = c.menuActive);
+    document.querySelectorAll('.nav-btn.active').forEach(b=>{
+      b.style.background = c.menuActive;
+    });
   }
   // Logo / name in sidebar
   const logoText = document.getElementById('sidebar-logo-text');
@@ -3339,34 +3371,43 @@ function cfSyncColor(colorId, hexId) {
 
 function cfGuardar() {
   const c = DB.config;
-  c.empresa = document.getElementById('cf-empresa').value.trim() || c.empresa;
-  c.slogan = document.getElementById('cf-slogan').value.trim();
-  c.telefono = document.getElementById('cf-tel').value.trim();
-  c.direccion = document.getElementById('cf-dir').value.trim();
-  c.correo = document.getElementById('cf-correo').value.trim();
-  c.rnc = document.getElementById('cf-rnc')?.value.trim() || '';
-  c.moneda = document.getElementById('cf-moneda').value.trim() || 'RD$';
-  c.itbis = parseFloat(document.getElementById('cf-itbis').value) || 18;
-  c.colorPrimary = document.getElementById('cf-color1')?.value || c.colorPrimary;
-  c.colorAccent = document.getElementById('cf-color2')?.value || c.colorAccent;
-  c.menuBg = document.getElementById('cf-menuBg')?.value || c.menuBg || '#0a2e1a';
-  c.menuText = document.getElementById('cf-menuText')?.value || c.menuText || '#ffffff';
-  c.menuActive = document.getElementById('cf-menuActive')?.value || c.menuActive || '#1a6b3c';
-  c.menuDashboard = document.getElementById('cf-m-dashboard').value || 'Dashboard';
-  c.menuFactura = document.getElementById('cf-m-factura').value || 'Nueva venta';
-  c.menuVentas = document.getElementById('cf-m-ventas').value || 'Ventas';
-  c.menuCompras = document.getElementById('cf-m-compras').value || 'Compras';
-  c.menuInventario = document.getElementById('cf-m-inventario').value || 'Inventario';
-  c.menuProductos = document.getElementById('cf-m-productos').value || 'Productos';
-  c.menuClientes = document.getElementById('cf-m-clientes').value || 'Clientes';
-  c.menuSuplidores = document.getElementById('cf-m-suplidores').value || 'Suplidores';
-  c.menuGastos = document.getElementById('cf-m-gastos')?.value || 'Gastos';
-  c.menuNomina = document.getElementById('cf-m-nomina')?.value || 'Nómina';
-  c.menuCaja = document.getElementById('cf-m-caja').value || 'Caja';
-  c.menuUsuarios = document.getElementById('cf-m-usuarios').value || 'Usuarios';
-  c.menuConfig = document.getElementById('cf-m-config').value || 'Configuración';
+  c.empresa = document.getElementById('cf-empresa')?.value.trim() || c.empresa;
+  c.slogan = document.getElementById('cf-slogan')?.value.trim() ?? c.slogan;
+  c.telefono = document.getElementById('cf-tel')?.value.trim() ?? c.telefono;
+  c.direccion = document.getElementById('cf-dir')?.value.trim() ?? c.direccion;
+  c.correo = document.getElementById('cf-correo')?.value.trim() ?? c.correo;
+  c.rnc = document.getElementById('cf-rnc')?.value.trim() ?? c.rnc ?? '';
+  c.moneda = document.getElementById('cf-moneda')?.value.trim() || c.moneda || 'RD$';
+  c.itbis = parseFloat(document.getElementById('cf-itbis')?.value) || c.itbis || 0;
 
-  // Guardar íconos personalizados
+  // Colores — solo guardar si el campo existe (admin)
+  const col1 = document.getElementById('cf-color1');
+  const col2 = document.getElementById('cf-color2');
+  const colMenuBg = document.getElementById('cf-menuBg');
+  const colMenuText = document.getElementById('cf-menuText');
+  const colMenuActive = document.getElementById('cf-menuActive');
+  if(col1 && col1.value) c.colorPrimary = col1.value;
+  if(col2 && col2.value) c.colorAccent = col2.value;
+  if(colMenuBg && colMenuBg.value) c.menuBg = colMenuBg.value;
+  if(colMenuText && colMenuText.value) c.menuText = colMenuText.value;
+  if(colMenuActive && colMenuActive.value) c.menuActive = colMenuActive.value;
+
+  // Etiquetas del menú — solo si los campos existen
+  if(document.getElementById('cf-m-dashboard')) c.menuDashboard = document.getElementById('cf-m-dashboard').value || 'Dashboard';
+  if(document.getElementById('cf-m-factura')) c.menuFactura = document.getElementById('cf-m-factura').value || 'Nueva venta';
+  if(document.getElementById('cf-m-ventas')) c.menuVentas = document.getElementById('cf-m-ventas').value || 'Ventas';
+  if(document.getElementById('cf-m-compras')) c.menuCompras = document.getElementById('cf-m-compras').value || 'Compras';
+  if(document.getElementById('cf-m-inventario')) c.menuInventario = document.getElementById('cf-m-inventario').value || 'Inventario';
+  if(document.getElementById('cf-m-productos')) c.menuProductos = document.getElementById('cf-m-productos').value || 'Productos';
+  if(document.getElementById('cf-m-clientes')) c.menuClientes = document.getElementById('cf-m-clientes').value || 'Clientes';
+  if(document.getElementById('cf-m-suplidores')) c.menuSuplidores = document.getElementById('cf-m-suplidores').value || 'Suplidores';
+  if(document.getElementById('cf-m-gastos')) c.menuGastos = document.getElementById('cf-m-gastos').value || 'Gastos';
+  if(document.getElementById('cf-m-nomina')) c.menuNomina = document.getElementById('cf-m-nomina').value || 'Nómina';
+  if(document.getElementById('cf-m-caja')) c.menuCaja = document.getElementById('cf-m-caja').value || 'Caja';
+  if(document.getElementById('cf-m-usuarios')) c.menuUsuarios = document.getElementById('cf-m-usuarios').value || 'Usuarios';
+  if(document.getElementById('cf-m-config')) c.menuConfig = document.getElementById('cf-m-config').value || 'Configuración';
+
+  // Guardar íconos personalizados — solo si los campos existen
   const icoMap = {
     dashboard:'icoeDashboard',factura:'icoeFactura',ventas:'icoeVentas',compras:'icoeCompras',
     inventario:'icoeInventario',productos:'icoeProductos',clientes:'icoeClientes',
@@ -3374,8 +3415,8 @@ function cfGuardar() {
     caja:'icoeCaja',usuarios:'icoeUsuarios',config:'icoeConfig'
   };
   Object.entries(icoMap).forEach(([pid,key])=>{
-    const el=document.getElementById('cf-ico-'+pid);
-    if(el) c[key]=el.value.trim()||undefined;
+    const el = document.getElementById('cf-ico-'+pid);
+    if(el) c[key] = el.value.trim() || undefined;
   });
   // Aplicar íconos a ALL_PAGES
   const defIcos={dashboard:'🏠',factura:'🧾',ventas:'💰',compras:'📦',inventario:'📋',
@@ -3385,11 +3426,17 @@ function cfGuardar() {
     if(k) p.ico = c[k]||defIcos[p.id]||p.ico;
   });
 
+  // Guardar en localStorage Y en Firebase
+  DB.config = c;
   ss('config', c);
-  // Update global ITBIS
-  window.ITBIS_RATE = c.itbis / 100;
+  // Sincronizar con Firebase usando fbSave directamente
+  if(window.fbSave) window.fbSave('config', c);
+
+  // Aplicar todo y refrescar nav
   applyConfig();
   buildNav();
+  // Re-aplicar colores del menú después de que buildNav regenera los botones
+  setTimeout(applyConfig, 50);
   toast('✅ Configuración guardada correctamente');
 }
 
