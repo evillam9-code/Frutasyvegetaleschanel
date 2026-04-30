@@ -167,10 +167,10 @@ tbody tr:hover td{background:var(--gray-50)}
 
 /* ── INVOICE ── */
 .invoice-grid{display:grid;grid-template-columns:1fr 340px;gap:18px}
-.invoice-lines-header{display:grid;grid-template-columns:24px 1fr 80px 100px 60px 100px 28px;gap:8px;padding:0 4px 8px;border-bottom:1px solid var(--gray-200);margin-bottom:8px}
+.invoice-lines-header{display:grid;grid-template-columns:24px 1fr 70px 90px 55px 90px 28px;gap:5px;padding:0 4px 6px;border-bottom:1px solid var(--gray-200);margin-bottom:6px}
 .invoice-lines-header span{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-400);font-weight:600}
-.inv-line{display:grid;grid-template-columns:24px 1fr 80px 100px 60px 100px 28px;gap:8px;align-items:center;margin-bottom:8px}
-.inv-line input,.inv-line select{padding:7px 10px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);font-size:13px;font-family:'DM Sans',sans-serif;width:100%;outline:none;color:var(--gray-900)}
+.inv-line{display:grid;grid-template-columns:24px 1fr 70px 90px 55px 90px 28px;gap:5px;align-items:center;margin-bottom:4px}
+.inv-line input,.inv-line select{padding:4px 7px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);font-size:12px;font-family:'DM Sans',sans-serif;width:100%;outline:none;color:var(--gray-900)}
 .inv-line input:focus,.inv-line select:focus{border-color:var(--green-400)}
 .inv-line .line-num{font-size:11px;color:var(--gray-400);text-align:center}
 .inv-line .line-sub{font-size:13px;font-weight:600;color:var(--green-700);text-align:right}
@@ -304,6 +304,56 @@ tbody tr:hover td{background:var(--gray-50)}
       return n;
     };
 
+    // ── Sincronización en TIEMPO REAL ──
+    window.fbListeners = [];
+    window.fbActivarSync = function() {
+      const cols = ['ventas','compras','clientes','suplidores','productos','gastos','nomina','config'];
+      cols.forEach(col => {
+        const unsub = fbDB.collection('negocio').doc(col).onSnapshot(snap => {
+          if(!snap.exists || !window.currentUser) return;
+          try {
+            const datos = JSON.parse(snap.data().datos);
+            // Solo actualizar si cambiaron desde otro origen
+            const local = localStorage.getItem('fv2_'+col);
+            const localStr = JSON.stringify(datos);
+            if(local !== localStr) {
+              localStorage.setItem('fv2_'+col, localStr);
+              if(window.DB) {
+                window.DB[col] = datos;
+                // Refrescar la vista activa si corresponde
+                const paginaActual = document.querySelector('.page.active')?.id;
+                if(paginaActual) {
+                  const refreshMap = {
+                    'page-ventas': ()=>{ if(window.renderVentas) renderVentas(); },
+                    'page-compras': ()=>{ if(window.renderCompras) renderCompras(); },
+                    'page-cobros': ()=>{ if(window.renderCobros) renderCobros(); },
+                    'page-cxp': ()=>{ if(window.renderCxP) renderCxP(); },
+                    'page-clientes': ()=>{ if(window.renderClientes) renderClientes(); },
+                    'page-suplidores': ()=>{ if(window.renderSuplidores) renderSuplidores(); },
+                    'page-productos': ()=>{ if(window.renderProductos) renderProductos(); },
+                    'page-gastos': ()=>{ if(window.renderGastos) renderGastos(); },
+                    'page-nomina': ()=>{ if(window.renderNomina) renderNomina(); },
+                    'page-dashboard': ()=>{ if(window.renderDashboard) renderDashboard(); },
+                  };
+                  if(refreshMap[paginaActual]) refreshMap[paginaActual]();
+                  // Mostrar indicador de actualización
+                  const t = document.getElementById('toast');
+                  if(t && !t.classList.contains('show')){
+                    t.textContent = '🔄 Datos actualizados en tiempo real';
+                    t.className = 'toast show success';
+                    clearTimeout(t._to2);
+                    t._to2 = setTimeout(()=>t.classList.remove('show'), 2000);
+                  }
+                }
+              }
+            }
+          } catch(e){ console.warn('Sync error:', col, e); }
+        });
+        window.fbListeners.push(unsub);
+      });
+      console.log('Sincronización en tiempo real activada ✓');
+    };
+
     window.firebaseReady = true;
     console.log('Firebase conectado ✓');
     document.dispatchEvent(new Event('firebaseReady'));
@@ -425,7 +475,7 @@ tbody tr:hover td{background:var(--gray-50)}
 </div>
 
 <div class="toast" id="toast"></div>
-<div class="modal-bg" id="modal-bg" onclick="closeModal(event)">
+<div class="modal-bg" id="modal-bg">
   <div class="modal" id="modal">
     <div class="modal-title" id="modal-title"></div>
     <div class="modal-body-scroll"><div id="modal-body"></div></div>
@@ -445,9 +495,13 @@ function ss(k,v){try{localStorage.setItem('fv2_'+k,JSON.stringify(v))}catch{}}
 
 const defaultUsers = [
   {id:'u1',username:'admin',password:'admin123',nombre:'Administrador',role:'admin',
-   permisos:['dashboard','factura','ventas','compras','inventario','productos','clientes','suplidores','gastos','nomina','informes','caja','cobros','cxp','usuarios','config']},
+   permisos:['dashboard','factura','ventas','compras','inventario','productos','clientes','suplidores','gastos','nomina','informes','caja','cobros','cxp','usuarios','config',
+     'del_ventas','del_productos','del_clientes','del_suplidores','del_gastos','del_nomina','del_compras','del_cobros',
+     'edit_ventas','edit_productos','edit_clientes','edit_suplidores','edit_gastos','edit_compras']},
   {id:'u2',username:'dueno',password:'dueno123',nombre:'Dueño',role:'dueno',
-   permisos:['dashboard','factura','ventas','compras','inventario','productos','clientes','suplidores','gastos','nomina','informes','caja','cobros','cxp','config']},
+   permisos:['dashboard','factura','ventas','compras','inventario','productos','clientes','suplidores','gastos','nomina','informes','caja','cobros','cxp','config',
+     'del_ventas','del_productos','del_clientes','del_suplidores','del_gastos','del_nomina','del_compras',
+     'edit_ventas','edit_productos','edit_clientes','edit_suplidores','edit_gastos','edit_compras']},
   {id:'u3',username:'cajero1',password:'cajero123',nombre:'Cajero Principal',role:'cajero',
    permisos:['dashboard','factura','ventas','caja']},
   {id:'u4',username:'secretaria1',password:'sec123',nombre:'Secretaria',role:'secretaria',
@@ -526,7 +580,8 @@ function openModal(title,bodyHtml,buttons){
   document.getElementById('modal-bg').classList.add('open');
 }
 function closeModal(e){
-  if(!e||e.target===document.getElementById('modal-bg')){
+  // Solo cierra si se llama sin evento (desde botón) o si es escape
+  if(!e || e === true){
     document.getElementById('modal-bg').classList.remove('open');
     const modal=document.getElementById('modal');
     if(modal) modal.style.maxWidth='540px';
@@ -632,10 +687,14 @@ function doLogin(){
   applyConfig();
   // Restaurar estado del sidebar
   if(ls('sidebarCollapsed'))document.getElementById('sidebar').classList.add('collapsed');
+  // Activar sincronización en tiempo real con Firebase
+  if(window.fbActivarSync) window.fbActivarSync();
   showPage('dashboard');
 }
 
 function doLogout(){
+  // Desactivar sincronización en tiempo real
+  if(window.fbListeners) { window.fbListeners.forEach(u=>u()); window.fbListeners=[]; }
   currentUser=null;facLines=[];
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app').style.display='none';
@@ -1143,6 +1202,7 @@ function renderVentas(){
             <td style="text-align:right;font-weight:600;color:var(--green-700)">${fmt(v.total)}</td>
             <td><div style="display:flex;gap:4px">
               <button class="btn btn-secondary btn-sm" onclick="verFactura('${v.id}')">🧾 Ver</button>
+              ${(isAdmin()||can('edit_ventas'))?`<button class="btn btn-amber btn-sm" onclick="editarFactura('${v.id}')">✏️ Editar</button>`:''}
               ${can('del_ventas')?`<button class="btn btn-danger btn-sm" onclick="ventaEliminar('${v.id}')">🗑</button>`:''}
             </div></td>
           </tr>`).join('')||'<tr><td colspan="9"><div class="empty-state"><div class="empty-ico">🧾</div><p>Sin ventas registradas</p></div></td></tr>'}
@@ -1163,6 +1223,69 @@ function ventaEliminar(id){
 function ventaEliminarConfirm(id){
   DB.ventas=DB.ventas.filter(x=>x.id!==id);
   sDB('ventas');closeModal();toast('Factura eliminada');renderVentas();
+}
+
+function editarFactura(id){
+  const v=DB.ventas.find(x=>x.id===id);
+  if(!v){toast('Factura no encontrada','error');return;}
+  // Navegar a factura y precargar datos
+  showPage('factura');
+  // Esperar a que renderFactura() haya terminado
+  setTimeout(()=>{
+    // Precargar cliente
+    const cli=document.getElementById('fac-cli');
+    if(cli) cli.value=v.cliente==='Consumidor Final'?'':v.cliente;
+    // Precargar fecha
+    const fecha=document.getElementById('fac-fecha');
+    if(fecha) fecha.value=v.fecha;
+    // Precargar pago
+    const pago=document.getElementById('fac-pago');
+    if(pago){ pago.value=v.pago; facPagoChange(); }
+    // Precargar comprobante
+    const comp=document.getElementById('fac-comprobante');
+    if(comp) comp.checked=!!v.comprobante;
+    // Precargar ITBIS
+    const itbisChk=document.getElementById('fac-itbis-check');
+    if(itbisChk) itbisChk.checked=!!v.aplicaITBIS;
+    // Precargar lineas
+    facLines=(v.lineas||[]).map(l=>({nombre:l.nombre,cantidad:l.cantidad,precio:l.precio,descuento:l.descuento||0}));
+    if(!facLines.length) facLines=[{nombre:'',cantidad:1,precio:'',descuento:0}];
+    facRenderLines();
+    facUpdatePreview();
+    // Cambiar botón guardar para que actualice en lugar de crear
+    const btnGuardar=document.querySelector('#page-factura .btn-primary[onclick="facGuardar()"]');
+    if(btnGuardar){
+      btnGuardar.textContent='💾 Actualizar venta';
+      btnGuardar.setAttribute('onclick',`facActualizar('${id}')`);
+    }
+    // Marcar el número de factura en la vista previa
+    const pvNum=document.getElementById('pv-num');
+    if(pvNum) pvNum.textContent=v.num;
+    toast(`✏️ Editando factura #${v.num} — Modifica y guarda los cambios`,'success');
+  },100);
+}
+
+function facActualizar(id){
+  const v=DB.ventas.find(x=>x.id===id);
+  if(!v){toast('Factura no encontrada','error');return;}
+  const lineas=facLines.filter(l=>l.nombre&&l.cantidad>0);
+  if(!lineas.length){toast('Agrega al menos un producto','error');return;}
+  const sub=lineas.reduce((a,l)=>a+l.cantidad*l.precio*(1-l.descuento/100),0);
+  const aplicaITBIS=document.getElementById('fac-itbis-check')?.checked===true;
+  const itbisAmt=aplicaITBIS?sub*ITBIS_RATE:0;
+  const total=sub+itbisAmt;
+  const conComprobante=document.getElementById('fac-comprobante')?.checked===true;
+  v.fecha=document.getElementById('fac-fecha').value;
+  v.cliente=document.getElementById('fac-cli').value||'Consumidor Final';
+  v.pago=document.getElementById('fac-pago').value;
+  v.comprobante=conComprobante;
+  v.lineas=lineas;v.subtotal=sub;v.itbis=itbisAmt;v.aplicaITBIS=aplicaITBIS;v.total=total;
+  v.credito=document.getElementById('fac-pago').value==='Credito';
+  v.fechaVence=v.credito?document.getElementById('fac-vence').value:null;
+  sDB('ventas');
+  toast(`✅ Factura #${v.num} actualizada correctamente`);
+  showPage('ventas');
+  renderVentas();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -2239,6 +2362,9 @@ function renderCobros(){
   }).join("");
 
   pg.innerHTML = pageHeader("cobros","Cuentas por Cobrar","Facturas a credito pendientes de cobro") +
+    `<div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+      <button class="btn btn-primary" onclick="cxcNueva()">➕ Agregar CXC manual</button>
+    </div>` +
     "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px'>" +
       "<div class='card' style='border-top:3px solid #dc2626;text-align:center;padding:16px'>" +
         "<div style='font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px'>Total por cobrar</div>" +
@@ -2327,6 +2453,60 @@ function confirmarAbono(i, saldo){
   renderCobros();
 }
 
+function cxcNueva(){
+  const clientes = DB.clientes.map(c=>`<option value="${escHtml(c.nombre)}">${escHtml(c.nombre)}</option>`).join('');
+  openModal('➕ Nueva Cuenta por Cobrar',`
+    <p style="font-size:13px;color:var(--gray-500);margin-bottom:14px">Registra una cuenta por cobrar que no proviene de una factura del sistema.</p>
+    <div class="form-field"><label class="required">Cliente / Deudor</label>
+      <input type="text" id="cxc-cli" list="cxc-cli-list" placeholder="Nombre del cliente">
+      <datalist id="cxc-cli-list">${clientes}</datalist>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+      <div class="form-field"><label class="required">Monto (RD$)</label>
+        <input type="number" id="cxc-monto" min="0.01" step="0.01" placeholder="0.00">
+      </div>
+      <div class="form-field"><label>Fecha</label>
+        <input type="date" id="cxc-fecha" value="${today()}">
+      </div>
+    </div>
+    <div class="form-field" style="margin-top:10px"><label>Fecha de vencimiento</label>
+      <input type="date" id="cxc-vence">
+    </div>
+    <div class="form-field" style="margin-top:10px"><label>Descripción / Concepto</label>
+      <input type="text" id="cxc-desc" placeholder="Ej: Préstamo, servicio, etc.">
+    </div>`,
+    `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" onclick="cxcGuardar()">💾 Guardar CXC</button>`);
+}
+
+function cxcGuardar(){
+  const cli = document.getElementById('cxc-cli')?.value.trim();
+  const monto = parseFloat(document.getElementById('cxc-monto')?.value||0);
+  if(!cli){ toast('El cliente es requerido','error'); return; }
+  if(!monto||monto<=0){ toast('El monto debe ser mayor a 0','error'); return; }
+  const nuevaVenta = {
+    id: uid(),
+    num: String(DB.ventas.length+1).padStart(5,'0'),
+    fecha: document.getElementById('cxc-fecha')?.value||today(),
+    cliente: cli,
+    pago: 'Credito',
+    comprobante: false,
+    lineas: [{nombre: document.getElementById('cxc-desc')?.value||'Cuenta por cobrar', cantidad:1, precio:monto, descuento:0}],
+    subtotal: monto, itbis: 0, aplicaITBIS: false, total: monto,
+    cajero: currentUser.nombre,
+    credito: true,
+    fechaVence: document.getElementById('cxc-vence')?.value||null,
+    cobrado: false,
+    esCXCManual: true,
+    descripcion: document.getElementById('cxc-desc')?.value||''
+  };
+  DB.ventas.push(nuevaVenta);
+  sDB('ventas');
+  closeModal();
+  toast('✅ CXC registrada correctamente');
+  renderCobros();
+}
+
 
 // CUENTAS POR PAGAR
 function renderCxP(){
@@ -2363,6 +2543,9 @@ function renderCxP(){
   }).join("");
 
   pg.innerHTML = pageHeader("cxp","Cuentas por Pagar","Compras a credito pendientes de pago") +
+    "<div style='display:flex;justify-content:flex-end;margin-bottom:12px'>" +
+      "<button class='btn btn-primary' onclick='cxpNueva()'>➕ Agregar CXP manual</button>" +
+    "</div>" +
     "<div style='display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:20px'>" +
       "<div class='card' style='border-top:3px solid #7c3aed;text-align:center;padding:16px'><div style='font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px'>Total por pagar</div><div style='font-size:22px;font-weight:800;color:#7c3aed'>" + fmt(totalPend) + "</div><div style='font-size:12px;color:var(--gray-400)'>" + pendientes.length + " compras pendientes</div></div>" +
       "<div class='card' style='border-top:3px solid #16a34a;text-align:center;padding:16px'><div style='font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px'>Pagadas</div><div style='font-size:22px;font-weight:800;color:#16a34a'>" + pagadas.length + "</div><div style='font-size:12px;color:var(--gray-400)'>compras pagadas</div></div>" +
@@ -2412,6 +2595,58 @@ function confirmarPago(i, saldo){
   }
   sDB("compras");
   closeModal();
+  renderCxP();
+}
+
+function cxpNueva(){
+  const suplidores = DB.suplidores.map(s=>`<option value="${escHtml(s.nombre)}">${escHtml(s.nombre)}</option>`).join('');
+  openModal('➕ Nueva Cuenta por Pagar',`
+    <p style="font-size:13px;color:var(--gray-500);margin-bottom:14px">Registra una cuenta por pagar que no proviene de una compra del sistema.</p>
+    <div class="form-field"><label class="required">Suplidor / Acreedor</label>
+      <input type="text" id="cxp-sup" list="cxp-sup-list" placeholder="Nombre del suplidor o acreedor">
+      <datalist id="cxp-sup-list">${suplidores}</datalist>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+      <div class="form-field"><label class="required">Monto (RD$)</label>
+        <input type="number" id="cxp-monto" min="0.01" step="0.01" placeholder="0.00">
+      </div>
+      <div class="form-field"><label>Fecha</label>
+        <input type="date" id="cxp-fecha" value="${today()}">
+      </div>
+    </div>
+    <div class="form-field" style="margin-top:10px"><label>Fecha de vencimiento</label>
+      <input type="date" id="cxp-vence">
+    </div>
+    <div class="form-field" style="margin-top:10px"><label>Descripción / Concepto</label>
+      <input type="text" id="cxp-desc" placeholder="Ej: Servicio, deuda, alquiler, etc.">
+    </div>`,
+    `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" onclick="cxpGuardar()">💾 Guardar CXP</button>`);
+}
+
+function cxpGuardar(){
+  const sup = document.getElementById('cxp-sup')?.value.trim();
+  const monto = parseFloat(document.getElementById('cxp-monto')?.value||0);
+  if(!sup){ toast('El suplidor/acreedor es requerido','error'); return; }
+  if(!monto||monto<=0){ toast('El monto debe ser mayor a 0','error'); return; }
+  const nuevaCompra = {
+    id: uid(),
+    fecha: document.getElementById('cxp-fecha')?.value||today(),
+    suplidor: sup,
+    producto: document.getElementById('cxp-desc')?.value||'Cuenta por pagar',
+    cantidad: 1,
+    precio: monto,
+    ref: 'CXP-MANUAL',
+    notas: document.getElementById('cxp-desc')?.value||'',
+    pago: 'Credito',
+    fechaVence: document.getElementById('cxp-vence')?.value||null,
+    cobrado: false,
+    esCXPManual: true
+  };
+  DB.compras.push(nuevaCompra);
+  sDB('compras');
+  closeModal();
+  toast('✅ CXP registrada correctamente');
   renderCxP();
 }
 
@@ -2526,6 +2761,15 @@ const PERMISOS_BORRAR=[
   {id:'del_cobros',label:'🗑 Borrar Cobros'},
 ];
 
+const PERMISOS_EDITAR=[
+  {id:'edit_ventas',label:'✏️ Editar Ventas'},
+  {id:'edit_productos',label:'✏️ Editar Productos'},
+  {id:'edit_clientes',label:'✏️ Editar Clientes'},
+  {id:'edit_suplidores',label:'✏️ Editar Suplidores'},
+  {id:'edit_gastos',label:'✏️ Editar Gastos'},
+  {id:'edit_compras',label:'✏️ Editar Compras'},
+];
+
 function renderUsuarios(){
   document.getElementById('page-usuarios').innerHTML=`
     ${pageHeader('usuarios','Usuarios y Permisos','Gestiona el acceso al sistema')}
@@ -2557,6 +2801,14 @@ function renderUsuarios(){
       <div class="form-field" style="margin-top:8px"><label style="color:var(--red-600)">🗑 Permisos de borrar</label>
         <div class="perm-grid" id="perm-grid-del">
           ${PERMISOS_BORRAR.map(m=>`
+            <label class="perm-item" id="pni-${m.id}" onclick="togglePerm('pni-${m.id}','perm-${m.id}')">
+              <input type="checkbox" id="perm-${m.id}" value="${m.id}"> ${m.label}
+            </label>`).join('')}
+        </div>
+      </div>
+      <div class="form-field" style="margin-top:8px"><label style="color:#2563eb">✏️ Permisos de editar</label>
+        <div class="perm-grid" id="perm-grid-edit">
+          ${PERMISOS_EDITAR.map(m=>`
             <label class="perm-item" id="pni-${m.id}" onclick="togglePerm('pni-${m.id}','perm-${m.id}')">
               <input type="checkbox" id="perm-${m.id}" value="${m.id}"> ${m.label}
             </label>`).join('')}
@@ -2600,7 +2852,7 @@ function usGuardar(){
   const role=document.getElementById('us-role').value;
   if(!nom||!user||!pass){toast('Completa todos los campos','error');return;}
   if(DB.users.find(u=>u.username===user)){toast('Ese nombre de usuario ya existe','error');return;}
-  const permisos=[...MODULOS,...PERMISOS_BORRAR].filter(m=>document.getElementById('perm-'+m.id)?.checked).map(m=>m.id);
+  const permisos=[...MODULOS,...PERMISOS_BORRAR,...PERMISOS_EDITAR].filter(m=>document.getElementById('perm-'+m.id)?.checked).map(m=>m.id);
   if(!permisos.includes('dashboard'))permisos.unshift('dashboard');
   DB.users.push({id:uid(),username:user,password:pass,nombre:nom,role:role,permisos});
   sDB('users');toast('Usuario creado ✓');renderUsuarios();
@@ -2661,12 +2913,20 @@ function usEditarPermisos(i){
           <input type="checkbox" id="epc-${m.id}" value="${m.id}" ${u.permisos.includes(m.id)?'checked':''}> ${m.label}
         </label>`).join('')}
       </div>
+    </div>
+    <div style="margin-top:12px;border-top:1px solid #e5e7eb;padding-top:10px">
+      <div style="font-size:11px;font-weight:700;color:#2563eb;margin-bottom:8px;text-transform:uppercase">✏️ Permisos de editar</div>
+      <div class="perm-grid">${PERMISOS_EDITAR.map(m=>`
+        <label class="perm-item ${u.permisos.includes(m.id)?'checked':''}" id="ep-${m.id}" onclick="togglePerm('ep-${m.id}','epc-${m.id}')">
+          <input type="checkbox" id="epc-${m.id}" value="${m.id}" ${u.permisos.includes(m.id)?'checked':''}> ${m.label}
+        </label>`).join('')}
+      </div>
     </div>`,
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
      <button class="btn btn-primary" onclick="usGuardarPermisos(${i})">Guardar permisos</button>`);
 }
 function usGuardarPermisos(i){
-  const permisos=[...MODULOS,...PERMISOS_BORRAR].filter(m=>document.getElementById('epc-'+m.id)?.checked).map(m=>m.id);
+  const permisos=[...MODULOS,...PERMISOS_BORRAR,...PERMISOS_EDITAR].filter(m=>document.getElementById('epc-'+m.id)?.checked).map(m=>m.id);
   if(!permisos.includes('dashboard'))permisos.unshift('dashboard');
   DB.users[i].permisos=permisos;
   sDB('users');
@@ -2775,12 +3035,24 @@ DB.config = ls('config') || defaultConfig;
 
 function applyConfig() {
   const c = DB.config;
-  // Colors
+  // Colores principales
   document.documentElement.style.setProperty('--green-700', c.colorPrimary);
   document.documentElement.style.setProperty('--green-500', c.colorAccent);
   document.documentElement.style.setProperty('--green-600', c.colorAccent);
   document.documentElement.style.setProperty('--green-800', c.colorPrimary);
   document.documentElement.style.setProperty('--green-900', c.colorPrimary);
+  // Colores del menú lateral
+  const sidebar = document.getElementById('sidebar');
+  if(sidebar && c.menuBg) sidebar.style.background = c.menuBg;
+  if(c.menuText){
+    document.querySelectorAll('.nav-btn').forEach(b=>{ b.style.color = c.menuText+'aa'; });
+    document.querySelectorAll('.sidebar-section').forEach(s=>s.style.color = c.menuText+'55');
+    document.querySelectorAll('.user-name').forEach(u=>u.style.color = c.menuText);
+    document.querySelectorAll('.user-role').forEach(u=>u.style.color = c.menuText+'66');
+  }
+  if(c.menuActive){
+    document.querySelectorAll('.nav-btn.active').forEach(b=>b.style.background = c.menuActive);
+  }
   // Logo / name in sidebar
   const logoText = document.getElementById('sidebar-logo-text');
   if (logoText) {
@@ -2878,24 +3150,25 @@ function renderConfig() {
     </div>
 
     <!-- COLORES -->
-    <div class="card" style="margin-bottom:16px">
-      <div class="card-title"><span class="ico">🎨</span>Colores y apariencia</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:end">
+    <div class="card" style="margin-bottom:16px" id="cf-colores-card">
+      <div class="card-title"><span class="ico">🎨</span>Colores y apariencia <span style="font-size:11px;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:10px;margin-left:6px">Solo administrador</span></div>
+      ${!isAdmin()?`<div style="text-align:center;padding:20px;color:var(--gray-400)"><div style="font-size:32px;margin-bottom:8px">🔒</div><p>Los colores solo pueden ser modificados por el <strong>Administrador</strong>.</p></div>`:`
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:end;margin-bottom:14px">
         <div class="form-field">
-          <label>Color principal</label>
+          <label>Color principal (botones)</label>
           <div style="display:flex;align-items:center;gap:8px">
             <input type="color" id="cf-color1" value="${c.colorPrimary}" style="width:44px;height:36px;border-radius:6px;border:1px solid var(--gray-200);cursor:pointer;padding:2px" oninput="cfPreviewColor()">
             <input type="text" id="cf-color1-hex" value="${c.colorPrimary}" style="flex:1;font-family:monospace;font-size:12px" oninput="cfSyncColor('cf-color1','cf-color1-hex')">
           </div>
         </div>
         <div class="form-field">
-          <label>Color de acento</label>
+          <label>Color de acento (badges)</label>
           <div style="display:flex;align-items:center;gap:8px">
             <input type="color" id="cf-color2" value="${c.colorAccent}" style="width:44px;height:36px;border-radius:6px;border:1px solid var(--gray-200);cursor:pointer;padding:2px" oninput="cfPreviewColor()">
             <input type="text" id="cf-color2-hex" value="${c.colorAccent}" style="flex:1;font-family:monospace;font-size:12px" oninput="cfSyncColor('cf-color2','cf-color2-hex')">
           </div>
         </div>
-        <div style="grid-column:3/5">
+        <div>
           <label style="font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-400);font-weight:600;display:block;margin-bottom:8px">Vista previa</label>
           <div id="cf-color-preview" style="display:flex;gap:8px;flex-wrap:wrap">
             <div id="cprev1" style="padding:8px 18px;border-radius:8px;color:white;font-size:13px;font-weight:500;background:${c.colorPrimary}">Botón principal</div>
@@ -2904,9 +3177,46 @@ function renderConfig() {
           </div>
         </div>
       </div>
-      <div style="margin-top:14px;padding:10px 14px;background:var(--amber-100);border-radius:var(--radius-sm);font-size:12px;color:var(--amber-600)">
-        💡 Los colores se aplican al instante. Haz clic en "Guardar configuración" para que persistan al recargar.
+      <div style="border-top:1px solid var(--gray-100);padding-top:14px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--gray-600);margin-bottom:12px;text-transform:uppercase;letter-spacing:.4px">🗂️ Colores del menú lateral</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+          <div class="form-field">
+            <label>Fondo del menú</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="color" id="cf-menuBg" value="${c.menuBg||'#0a2e1a'}" style="width:44px;height:36px;border-radius:6px;border:1px solid var(--gray-200);cursor:pointer;padding:2px" oninput="cfPreviewColor()">
+              <input type="text" id="cf-menuBg-hex" value="${c.menuBg||'#0a2e1a'}" style="flex:1;font-family:monospace;font-size:12px" oninput="cfSyncColor('cf-menuBg','cf-menuBg-hex')">
+            </div>
+          </div>
+          <div class="form-field">
+            <label>Texto del menú</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="color" id="cf-menuText" value="${c.menuText||'#ffffff'}" style="width:44px;height:36px;border-radius:6px;border:1px solid var(--gray-200);cursor:pointer;padding:2px" oninput="cfPreviewColor()">
+              <input type="text" id="cf-menuText-hex" value="${c.menuText||'#ffffff'}" style="flex:1;font-family:monospace;font-size:12px" oninput="cfSyncColor('cf-menuText','cf-menuText-hex')">
+            </div>
+          </div>
+          <div class="form-field">
+            <label>Color ítem activo</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="color" id="cf-menuActive" value="${c.menuActive||'#1a6b3c'}" style="width:44px;height:36px;border-radius:6px;border:1px solid var(--gray-200);cursor:pointer;padding:2px" oninput="cfPreviewColor()">
+              <input type="text" id="cf-menuActive-hex" value="${c.menuActive||'#1a6b3c'}" style="flex:1;font-family:monospace;font-size:12px" oninput="cfSyncColor('cf-menuActive','cf-menuActive-hex')">
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:500;color:var(--gray-600)">Vista previa menú:</span>
+          <div id="menu-preview-wrap" style="display:flex;gap:4px;padding:6px 10px;border-radius:8px;background:${c.menuBg||'#0a2e1a'}">
+            <div style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px">
+              <span>🏠</span><span id="mprev-text" style="font-size:12px;color:${c.menuText||'#ffffff'}">Inicio</span>
+            </div>
+            <div id="mprev-active-wrap" style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;background:${c.menuActive||'#1a6b3c'}">
+              <span>💰</span><span id="mprev-active" style="font-size:12px;color:${c.menuText||'#ffffff'};font-weight:600">Ventas ✓</span>
+            </div>
+          </div>
+        </div>
       </div>
+      <div style="margin-top:4px;padding:10px 14px;background:var(--amber-100);border-radius:var(--radius-sm);font-size:12px;color:var(--amber-600)">
+        💡 Los colores se aplican al instante. Haz clic en "Guardar configuración" para que persistan al recargar.
+      </div>`}
     </div>
 
     <!-- ETIQUETAS E ÍCONOS DEL MENÚ -->
@@ -2975,26 +3285,54 @@ function cfRemoveLogo() {
 }
 
 function cfPreviewColor() {
-  const c1 = document.getElementById('cf-color1').value;
-  const c2 = document.getElementById('cf-color2').value;
-  document.getElementById('cf-color1-hex').value = c1;
-  document.getElementById('cf-color2-hex').value = c2;
-  document.getElementById('cprev1').style.background = c1;
-  document.getElementById('cprev2').style.background = c2;
-  document.getElementById('cprev3').style.background = c1+'22';
-  document.getElementById('cprev3').style.color = c1;
-  // Live apply
-  document.documentElement.style.setProperty('--green-700', c1);
-  document.documentElement.style.setProperty('--green-800', c1);
-  document.documentElement.style.setProperty('--green-900', c1);
-  document.documentElement.style.setProperty('--green-500', c2);
-  document.documentElement.style.setProperty('--green-600', c2);
+  const c1 = document.getElementById('cf-color1')?.value;
+  const c2 = document.getElementById('cf-color2')?.value;
+  const menuBg = document.getElementById('cf-menuBg')?.value;
+  const menuText = document.getElementById('cf-menuText')?.value;
+  const menuActive = document.getElementById('cf-menuActive')?.value;
+
+  if(c1){
+    if(document.getElementById('cf-color1-hex')) document.getElementById('cf-color1-hex').value = c1;
+    if(document.getElementById('cprev1')) document.getElementById('cprev1').style.background = c1;
+    if(document.getElementById('cprev3')){ document.getElementById('cprev3').style.background = c1+'22'; document.getElementById('cprev3').style.color = c1; }
+    document.documentElement.style.setProperty('--green-700', c1);
+    document.documentElement.style.setProperty('--green-800', c1);
+    document.documentElement.style.setProperty('--green-900', c1);
+  }
+  if(c2){
+    if(document.getElementById('cf-color2-hex')) document.getElementById('cf-color2-hex').value = c2;
+    if(document.getElementById('cprev2')) document.getElementById('cprev2').style.background = c2;
+    document.documentElement.style.setProperty('--green-500', c2);
+    document.documentElement.style.setProperty('--green-600', c2);
+  }
+  // Aplicar colores del menú en tiempo real
+  if(menuBg){
+    if(document.getElementById('cf-menuBg-hex')) document.getElementById('cf-menuBg-hex').value = menuBg;
+    document.getElementById('sidebar').style.background = menuBg;
+    if(document.getElementById('menu-preview-wrap')) document.getElementById('menu-preview-wrap').style.background = menuBg;
+  }
+  if(menuText){
+    if(document.getElementById('cf-menuText-hex')) document.getElementById('cf-menuText-hex').value = menuText;
+    document.querySelectorAll('.nav-btn').forEach(b=>b.style.color = menuText+'aa');
+    document.querySelectorAll('.sidebar-section').forEach(s=>s.style.color = menuText+'55');
+    document.querySelectorAll('.user-name').forEach(u=>u.style.color = menuText);
+    if(document.getElementById('mprev-text')) document.getElementById('mprev-text').style.color = menuText;
+    if(document.getElementById('mprev-active')) document.getElementById('mprev-active').style.color = menuText;
+  }
+  if(menuActive){
+    if(document.getElementById('cf-menuActive-hex')) document.getElementById('cf-menuActive-hex').value = menuActive;
+    document.querySelectorAll('.nav-btn.active').forEach(b=>b.style.background = menuActive);
+    if(document.getElementById('mprev-active-wrap')) document.getElementById('mprev-active-wrap').style.background = menuActive;
+  }
 }
 
 function cfSyncColor(colorId, hexId) {
-  const hex = document.getElementById(hexId).value;
+  const hexEl = document.getElementById(hexId);
+  const colorEl = document.getElementById(colorId);
+  if(!hexEl || !colorEl) return;
+  const hex = hexEl.value;
   if(/^#[0-9A-Fa-f]{6}$/.test(hex)) {
-    document.getElementById(colorId).value = hex;
+    colorEl.value = hex;
     cfPreviewColor();
   }
 }
@@ -3009,8 +3347,11 @@ function cfGuardar() {
   c.rnc = document.getElementById('cf-rnc')?.value.trim() || '';
   c.moneda = document.getElementById('cf-moneda').value.trim() || 'RD$';
   c.itbis = parseFloat(document.getElementById('cf-itbis').value) || 18;
-  c.colorPrimary = document.getElementById('cf-color1').value;
-  c.colorAccent = document.getElementById('cf-color2').value;
+  c.colorPrimary = document.getElementById('cf-color1')?.value || c.colorPrimary;
+  c.colorAccent = document.getElementById('cf-color2')?.value || c.colorAccent;
+  c.menuBg = document.getElementById('cf-menuBg')?.value || c.menuBg || '#0a2e1a';
+  c.menuText = document.getElementById('cf-menuText')?.value || c.menuText || '#ffffff';
+  c.menuActive = document.getElementById('cf-menuActive')?.value || c.menuActive || '#1a6b3c';
   c.menuDashboard = document.getElementById('cf-m-dashboard').value || 'Dashboard';
   c.menuFactura = document.getElementById('cf-m-factura').value || 'Nueva venta';
   c.menuVentas = document.getElementById('cf-m-ventas').value || 'Ventas';
@@ -3079,6 +3420,73 @@ Object.defineProperty(window, 'ITBIS_RATE', {
   get: function() { return (DB.config ? DB.config.itbis : 18) / 100; },
   configurable: true
 });
+
+// ══════════════════════════════════════════════════════════════
+// CIERRE AUTOMÁTICO POR INACTIVIDAD (10 minutos)
+// ══════════════════════════════════════════════════════════════
+(function(){
+  const TIMEOUT_MS = 10 * 60 * 1000;   // 10 minutos
+  const WARN_MS    =  9 * 60 * 1000;   // aviso al minuto 9
+  let timerLogout, timerWarn, toastWarnTimer;
+
+  function resetTimer(){
+    clearTimeout(timerLogout);
+    clearTimeout(timerWarn);
+    clearTimeout(toastWarnTimer);
+
+    // Solo si hay sesión activa
+    if(!window.currentUser) return;
+
+    // Aviso 1 minuto antes
+    timerWarn = setTimeout(()=>{
+      if(!window.currentUser) return;
+      const t = document.getElementById('toast');
+      if(t){
+        t.textContent = '⚠️ Cierre de sesión por inactividad en 1 minuto';
+        t.className = 'toast show error';
+        // Lo dejamos visible 20 segundos
+        toastWarnTimer = setTimeout(()=> t.classList.remove('show'), 20000);
+      }
+    }, WARN_MS);
+
+    // Cerrar sesión al llegar a 10 minutos
+    timerLogout = setTimeout(()=>{
+      if(!window.currentUser) return;
+      // Cerrar modal si está abierto
+      document.getElementById('modal-bg')?.classList.remove('open');
+      // Ejecutar logout
+      if(window.doLogout) doLogout();
+      // Mostrar mensaje en la pantalla de login
+      setTimeout(()=>{
+        const err = document.getElementById('login-error');
+        if(err){
+          err.textContent = '🔒 Sesión cerrada por inactividad (10 minutos sin uso).';
+          err.style.display = 'block';
+        }
+      }, 100);
+    }, TIMEOUT_MS);
+  }
+
+  // Eventos que cuentan como actividad
+  const eventos = ['mousemove','mousedown','keydown','touchstart','scroll','click'];
+  eventos.forEach(ev => document.addEventListener(ev, resetTimer, { passive:true }));
+
+  // Arrancar cuando el usuario inicie sesión
+  const _origDoLogin2 = window.doLogin;
+  window.doLogin = function(){
+    _origDoLogin2 && _origDoLogin2.apply(this, arguments);
+    resetTimer();
+  };
+
+  // Pausar cuando cierra sesión
+  const _origDoLogout2 = window.doLogout;
+  window.doLogout = function(){
+    clearTimeout(timerLogout);
+    clearTimeout(timerWarn);
+    clearTimeout(toastWarnTimer);
+    _origDoLogout2 && _origDoLogout2.apply(this, arguments);
+  };
+})();
 </script>
 <script>
 // ── VER FACTURA INDIVIDUAL ──────────────────────────────────
