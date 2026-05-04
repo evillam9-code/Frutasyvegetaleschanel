@@ -359,6 +359,27 @@ tbody tr:hover td{background:var(--gray-50)}
       console.log('Sincronización en tiempo real activada ✓');
     };
 
+    // ── PRESENCIA EN TIEMPO REAL ──
+    window.fbPresenciaSet = async function(user) {
+      try {
+        await fbDB.collection('presencia').doc(user.id).set({
+          id: user.id, nombre: user.nombre, username: user.username,
+          role: user.role, desde: Date.now()
+        });
+      } catch(e){ console.warn('Presencia set error:', e); }
+    };
+    window.fbPresenciaOff = async function(userId) {
+      try { await fbDB.collection('presencia').doc(userId).delete(); }
+      catch(e){ console.warn('Presencia off error:', e); }
+    };
+    window.fbPresenciaListen = function(callback) {
+      return fbDB.collection('presencia').onSnapshot(snap => {
+        const online = {};
+        snap.forEach(doc => { online[doc.id] = doc.data(); });
+        callback(online);
+      });
+    };
+
     window.firebaseReady = true;
     console.log('Firebase conectado ✓');
     document.dispatchEvent(new Event('firebaseReady'));
@@ -558,6 +579,7 @@ function sDB(k){
 
 let currentUser = null;
 let facLines = [];
+window._onlineUsers = {};
 
 // ══════════════════════════════════════════════════════════════
 // HELPERS
@@ -696,11 +718,26 @@ function doLogin(){
   if(ls('sidebarCollapsed'))document.getElementById('sidebar').classList.add('collapsed');
   // Activar sincronización en tiempo real con Firebase
   if(window.fbActivarSync) window.fbActivarSync();
+  if(window.fbPresenciaSet) window.fbPresenciaSet(user);
+  // Presencia: escuchar cambios solo si es admin
+  if(user.role==='admin' && window.fbPresenciaListen){
+    window._presenciaUnsub = window.fbPresenciaListen(function(online){
+      window._onlineUsers = online;
+      const pag = document.querySelector('.page.active');
+      if(pag && pag.id==='page-usuarios') renderUsuarios();
+    });
+  }
+  // Limpiar presencia al cerrar pestaña
+  window.addEventListener('beforeunload', function(){
+    if(window.fbPresenciaOff && currentUser) window.fbPresenciaOff(currentUser.id);
+  });
   showPage('dashboard');
 }
 
 function doLogout(){
-  // Desactivar sincronización en tiempo real
+  if(window.fbPresenciaOff && currentUser) window.fbPresenciaOff(currentUser.id);
+  if(window._presenciaUnsub){ window._presenciaUnsub(); window._presenciaUnsub=null; }
+  window._onlineUsers={};
   if(window.fbListeners) { window.fbListeners.forEach(u=>u()); window.fbListeners=[]; }
   currentUser=null;facLines=[];
   document.getElementById('login-screen').style.display='flex';
@@ -2959,9 +2996,18 @@ function renderUsuarios(){
     <div class="card">
       <div class="card-title"><span class="ico">👥</span>Usuarios del sistema</div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Módulos</th><th>Acciones</th></tr></thead>
-        <tbody>${DB.users.map((u,i)=>`
-          <tr>
+        <thead><tr>
+          ${isAdmin()?'<th style="width:110px">Estado</th>':''}
+          <th>Nombre</th><th>Usuario</th><th>Rol</th><th>Módulos</th><th>Acciones</th>
+        </tr></thead>
+        <tbody>${DB.users.map((u,i)=>{
+          const onlineData = isAdmin() && window._onlineUsers && window._onlineUsers[u.id];
+          const onlineDot = isAdmin() ? (onlineData
+            ? `<td style="padding:10px 12px"><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#16a34a;font-weight:500"><span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;box-shadow:0 0 0 3px rgba(34,197,94,0.2)"></span> En línea<br><span style="font-size:10px;color:var(--gray-500);font-weight:400">${new Date(onlineData.desde).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'})}</span></span></td>`
+            : `<td style="padding:10px 12px"><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--gray-400)"><span style="width:8px;height:8px;border-radius:50%;background:#d1d5db;display:inline-block"></span> Desconectado</span></td>`)
+          : '';
+          return `<tr>
+            ${onlineDot}
             <td style="font-weight:500">${escHtml(u.nombre)}</td>
             <td style="font-family:monospace;color:var(--gray-500)">${escHtml(u.username)}</td>
             <td><span class="badge ${getRolBadge(u.role)}">${getRolLabel(u.role)}</span></td>
@@ -2971,7 +3017,7 @@ function renderUsuarios(){
               ${isAdmin()?`<button class="btn btn-amber btn-sm" onclick="usEditarPermisos(${i})">🔑 Permisos</button>`:''}
               ${(isAdmin()&&u.id!=='u1')?`<button class="btn btn-danger btn-sm" onclick="usEliminar(${i})">🗑</button>`:''}
             </div></td>
-          </tr>`).join('')}
+          </tr>`;}).join('')}
         </tbody>
       </table></div>
     </div>`;
@@ -3682,7 +3728,7 @@ function facHtml(v){
 
   return `
   <style>
-    .fac-wrap{font-family:'DM Sans',sans-serif;width:100%;max-width:560px;margin:0 auto;color:#111;background:#fff;padding:20px 24px}
+    .fac-wrap{font-family:'DM Sans',sans-serif;width:100%;max-width:660px;margin:0 auto;color:#111;background:#fff;padding:20px 24px}
     .fac-wrap *{box-sizing:border-box;margin:0;padding:0}
     /* CABECERA estilo factura física */
     .fac-header{display:flex;align-items:center;justify-content:space-between;border:2px solid #1a3a6b;border-radius:4px;padding:10px 14px;margin-bottom:10px}
@@ -3705,18 +3751,22 @@ function facHtml(v){
     .fac-dato-label{font-size:11px;font-weight:600;color:#374151;white-space:nowrap}
     .fac-dato-val{flex:1;font-size:12px;color:#111;min-height:16px}
     /* TABLA */
-    table.fac-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px}
+    table.fac-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;table-layout:fixed}
     table.fac-tbl thead tr{background:#e2e8f0}
-    table.fac-tbl th{padding:6px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:#1e293b;font-weight:700;text-align:left;border:1px solid #94a3b8;border-bottom:2px solid #1a3a6b}
+    table.fac-tbl th{padding:6px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:#1e293b;font-weight:700;text-align:left;border:1px solid #94a3b8;border-bottom:2px solid #14532e}
     table.fac-tbl th.r{text-align:right}
+    table.fac-tbl th.cant{width:48px;text-align:center}
+    table.fac-tbl th.precio{width:130px;text-align:right}
+    table.fac-tbl th.total{width:130px;text-align:right}
     table.fac-tbl td{padding:5px 8px;border:1px solid #d1d5db;font-size:12px}
     table.fac-tbl td.r{text-align:right}
+    table.fac-tbl td.c{text-align:center}
     table.fac-tbl tbody tr:nth-child(even) td{background:#f9fafb}
     /* TOTALES */
     .fac-totales{display:flex;justify-content:flex-end;margin-bottom:12px}
-    .fac-totales-box{width:220px;font-size:12px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden}
-    .fac-tot-row{display:flex;justify-content:space-between;padding:4px 10px;border-bottom:1px solid #f3f4f6;color:#4b5563}
-    .fac-tot-grand{display:flex;justify-content:space-between;padding:8px 10px;background:#1a3a6b;color:#fff;font-weight:700;font-size:14px}
+    .fac-totales-box{width:280px;font-size:12px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden}
+    .fac-tot-row{display:flex;justify-content:space-between;padding:6px 12px;border-bottom:1px solid #f3f4f6;color:#374151;font-weight:700}
+    .fac-tot-grand{display:flex;justify-content:space-between;padding:10px 12px;background:#fff;color:#111;font-weight:700;font-size:15px;border-top:3px double #374151}
     /* NCF */
     .fac-ncf{background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:5px 10px;font-size:11px;color:#92400e;margin-bottom:8px;display:flex;justify-content:space-between}
     /* FIRMAS */
@@ -3792,20 +3842,20 @@ function facHtml(v){
     <!-- ── TABLA PRODUCTOS ── -->
     <table class="fac-tbl">
       <thead><tr>
-        <th style="width:45px">CANT</th>
+        <th class="cant">CANT</th>
         <th>DESCRIPCIÓN</th>
-        <th class="r" style="width:85px">PRECIO</th>
-        ${lineas.some(l=>l.descuento>0)?'<th class="r" style="width:50px">DESC.</th>':''}
-        <th class="r" style="width:85px">TOTAL</th>
+        <th class="precio">PRECIO RD$</th>
+        ${lineas.some(l=>l.descuento>0)?'<th class="r" style="width:55px">DESC.</th>':''}
+        <th class="total">TOTAL RD$</th>
       </tr></thead>
       <tbody>
         ${lineas.map(l=>`
           <tr>
-            <td style="text-align:center">${l.cantidad}</td>
+            <td class="c">${l.cantidad}</td>
             <td>${escHtml(l.nombre)}</td>
-            <td class="r">${moneda} ${parseFloat(l.precio).toFixed(2)}</td>
+            <td class="r">${parseFloat(l.precio).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
             ${lineas.some(x=>x.descuento>0)?`<td class="r">${l.descuento>0?l.descuento+'%':'—'}</td>`:''}
-            <td class="r" style="font-weight:600">${moneda} ${(l.cantidad*l.precio*(1-l.descuento/100)).toFixed(2)}</td>
+            <td class="r" style="font-weight:600">${(l.cantidad*l.precio*(1-l.descuento/100)).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
           </tr>`).join('')}
         <!-- Filas vacías para que se vea como la física -->
         ${Array.from({length:Math.max(0,8-lineas.length)},()=>`<tr><td>&nbsp;</td><td></td><td></td>${lineas.some(x=>x.descuento>0)?'<td></td>':''}<td></td></tr>`).join('')}
@@ -3815,9 +3865,9 @@ function facHtml(v){
     <!-- ── TOTALES ── -->
     <div class="fac-totales">
       <div class="fac-totales-box">
-        <div class="fac-tot-row"><span>Subtotal</span><span>${moneda} ${sub.toFixed(2)}</span></div>
-        ${aplicaITBIS?`<div class="fac-tot-row" style="color:#9ca3af"><span>ITBIS (${itbis}%)</span><span>${moneda} ${itbisAmt.toFixed(2)}</span></div>`:''}
-        <div class="fac-tot-grand"><span>TOTAL RD$</span><span>${moneda} ${total.toFixed(2)}</span></div>
+        <div class="fac-tot-row"><span>Subtotal</span><span>${sub.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>
+        ${aplicaITBIS?`<div class="fac-tot-row" style="color:#9ca3af"><span>ITBIS (${itbis}%)</span><span>${itbisAmt.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`:''}
+        <div class="fac-tot-grand"><span>TOTAL RD$</span><span>${total.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>
       </div>
     </div>
 
@@ -3842,7 +3892,7 @@ function verFactura(id) {
 
   // Modal más ancho para la factura
   const modal = document.getElementById('modal');
-  if(modal) modal.style.maxWidth='580px';
+  if(modal) modal.style.maxWidth='700px';
 
   openModal('Factura #'+v.num,
     facHtml(v),
@@ -3882,7 +3932,7 @@ function guardarFacturaPDF(id) {
       .tbtn-close{background:rgba(255,255,255,.12);color:#fff}
       .tbtn-close:hover{background:rgba(255,255,255,.2)}
       .page-wrap{padding:28px;display:flex;justify-content:center}
-      .fac-wrap{background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.10);border-radius:12px;max-width:560px;width:100%}
+      .fac-wrap{background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.10);border-radius:12px;max-width:660px;width:100%}
     </style>
     </head><body>
     <div class="toolbar">
