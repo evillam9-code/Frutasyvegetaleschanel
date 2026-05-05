@@ -745,7 +745,7 @@ function doLogin(){
   if(tNom) tNom.textContent=user.nombre;
   if(tRol) tRol.textContent=getRolLabel(user.role);
   // Iniciar timer de inactividad
-  resetInactividad();
+  if(typeof resetInactividad === 'function') resetInactividad();
   if(window.fbActivarSync) window.fbActivarSync();
   if(window.fbPresenciaSet) window.fbPresenciaSet(user);
   // Presencia: escuchar cambios solo si es admin
@@ -1168,6 +1168,11 @@ function renderFactura(){
               Agregar comprobante fiscal (NCF)
             </label>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;font-size:13px">
+              <input type="checkbox" id="fac-rnc-check" onchange="facToggleRNC()" style="width:16px;height:16px;cursor:pointer">
+              RNC del cliente
+            </label>
+            <input type="text" id="fac-rnc-val" placeholder="Ej: 1-30-12345-6" style="display:none;padding:7px 10px;border:1.5px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif;width:200px" oninput="facUpdatePreview()">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;font-size:13px">
               <input type="checkbox" id="fac-itbis-check" onchange="facCalc()" style="width:16px;height:16px;cursor:pointer">
               Aplicar ITBIS
             </label>
@@ -1352,7 +1357,13 @@ function renderVentas(){
             <input type="date" id="vt-hasta" value="${today()}" onchange="vtFiltrar()" style="padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius-md);font-size:13px;font-family:'DM Sans',sans-serif">
           </div>
         </div>
-        <input class="search-input" placeholder="Buscar cliente, factura..." oninput="vtFiltrar()" id="vt-buscar" style="flex:1;min-width:180px">
+        <select id="vt-ncf" onchange="vtFiltrar()" style="padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius-md);font-size:13px;font-family:'DM Sans',sans-serif">
+          <option value="">NCF: Todos</option><option value="con">Con NCF</option><option value="sin">Sin NCF</option>
+        </select>
+        <select id="vt-pago-fil" onchange="vtFiltrar()" style="padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius-md);font-size:13px;font-family:'DM Sans',sans-serif">
+          <option value="">Pago: Todos</option><option value="Efectivo">Efectivo</option><option value="Tarjeta">Tarjeta</option><option value="Transferencia">Transferencia</option><option value="Credito">Crédito</option>
+        </select>
+        <input class="search-input" placeholder="Buscar cliente, factura, RNC..." oninput="vtFiltrar()" id="vt-buscar" style="flex:1;min-width:180px">
         <button class="btn btn-secondary btn-sm" onclick="vtImprimir()">🖨️ Imprimir informe</button>
       </div>
       <div id="vt-resumen" style="display:flex;gap:12px;margin-bottom:10px;font-size:13px"></div>
@@ -1388,9 +1399,15 @@ function vtFiltrar(){
   const buscar=(document.getElementById('vt-buscar')?.value||'').toLowerCase();
   let ventas=DB.ventas.slice().reverse();
   if(desde&&hasta) ventas=ventas.filter(v=>v.fecha>=desde&&v.fecha<=hasta);
+  const ncf=document.getElementById('vt-ncf')?.value||'';
+  const pagoFil=document.getElementById('vt-pago-fil')?.value||'';
+  if(ncf==='con') ventas=ventas.filter(v=>v.comprobante);
+  if(ncf==='sin') ventas=ventas.filter(v=>!v.comprobante);
+  if(pagoFil) ventas=ventas.filter(v=>v.pago===pagoFil);
   if(buscar) ventas=ventas.filter(v=>
     (v.cliente||'').toLowerCase().includes(buscar)||
     (v.num||'').toLowerCase().includes(buscar)||
+    (v.rnc||'').toLowerCase().includes(buscar)||
     (v.lineas||[]).some(l=>l.nombre.toLowerCase().includes(buscar))
   );
   const total=ventas.reduce((a,v)=>a+parseFloat(v.total||0),0);
@@ -1590,7 +1607,7 @@ function renderCompras(){
       </div>
       <div id="cp-resumen" style="display:flex;gap:12px;margin-bottom:10px;font-size:13px"></div>
       <div class="table-wrap"><table id="cptbl">
-        <thead><tr><th>Fecha</th><th>Suplidor</th><th>Producto</th><th>Cantidad</th><th>Precio unit.</th><th style="text-align:right">Subtotal</th><th>Ref.</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Suplidor</th><th>Producto</th><th>Cantidad</th><th>Precio unit.</th><th style="text-align:right">Subtotal</th><th>Forma de pago</th><th>Acciones</th></tr></thead>
         <tbody id="cptbl-body"></tbody>
       </table></div>
     </div>`;
@@ -1637,8 +1654,12 @@ function cpFiltrar(){
       <td>${c.cantidad} ${escHtml(DB.productos.find(p=>p.nombre===c.producto)?.unidad||'')}</td>
       <td>${fmt(c.precio)}</td>
       <td style="text-align:right;font-weight:600;color:var(--amber-600)">${fmt(parseFloat(c.cantidad)*parseFloat(c.precio))}</td>
-      <td style="color:var(--gray-400)">${escHtml(c.ref||'—')}</td>
-    </tr>`).join('')||'<tr><td colspan="7"><div class="empty-state"><div class="empty-ico">📦</div><p>Sin compras en este período</p></div></td></tr>';
+      <td><span class="badge ${c.pago==='Credito'?'badge-amber':'badge-green'}">${escHtml(c.pago||'Contado')}</span></td>
+      <td><div style="display:flex;gap:4px">
+        <button class="btn btn-secondary btn-sm" onclick="cpEditar('${c.id}')">✏️</button>
+        ${can('del_compras')||isAdmin()?`<button class="btn btn-danger btn-sm" onclick="cpEliminar('${c.id}')">🗑</button>`:''}
+      </div></td>
+    </tr>`).join('')||'<tr><td colspan="8"><div class="empty-state"><div class="empty-ico">📦</div><p>Sin compras en este período</p></div></td></tr>';
 }
 
 function cpImprimir(){
@@ -1711,33 +1732,22 @@ function renderInventario(){
   document.getElementById('page-inventario').innerHTML=`
     ${pageHeader('inventario','Inventario Actual','Stock calculado en tiempo real')}
     <div class="card" style="border-top:3px solid #7c3aed">
-      <div class="search-wrap" style="display:flex;gap:8px;align-items:center">
-        <input class="search-input" placeholder="Buscar producto..." oninput="filterTable('invtbl',this.value)" style="flex:1">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:12px">
+        <div class="form-field" style="margin:0"><label style="font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase">Período</label>
+          <select id="inv-periodo" onchange="invFiltrar()" style="padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius-md);font-size:13px;font-family:'DM Sans',sans-serif">
+            <option value="todo">Todos</option><option value="dia">Hoy</option><option value="semana">Esta semana</option><option value="mes">Este mes</option>
+          </select>
+        </div>
+        <input class="search-input" id="inv-buscar" placeholder="Buscar producto..." oninput="invFiltrar()" style="flex:1;min-width:180px">
         <button class="btn btn-secondary btn-sm" onclick="exportarPDFInventario()">🖨️ Imprimir / PDF</button>
       </div>
+      <div id="inv-resumen" style="margin-bottom:8px;font-size:13px"></div>
       <div class="table-wrap"><table id="invtbl">
         <thead><tr><th></th><th>Código</th><th>Producto</th><th>Categoría</th><th>Unidad</th><th>Precio venta</th><th>Comprado</th><th>Vendido</th><th>Stock actual</th><th>Estado</th></tr></thead>
-        <tbody>${DB.productos.map(p=>{
-          const comp=DB.compras.filter(c=>c.producto===p.nombre).reduce((a,c)=>a+parseFloat(c.cantidad||0),0);
-          const vend=DB.ventas.flatMap(v=>v.lineas||[]).filter(l=>l.nombre===p.nombre).reduce((a,l)=>a+parseFloat(l.cantidad||0),0);
-          const stock=comp-vend;
-          const badge=stock<=0?'badge-red':stock<=(p.minimo||0)?'badge-amber':'badge-green';
-          const estado=stock<=0?'Sin stock':stock<=(p.minimo||0)?'Stock bajo':'Disponible';
-          return `<tr>
-            <td>${imgEl(p.img,'img-thumb')}</td>
-            <td style="color:var(--gray-400);font-size:12px">${escHtml(p.codigo)}</td>
-            <td style="font-weight:500">${escHtml(p.nombre)}</td>
-            <td><span class="badge badge-gray">${escHtml(p.categoria)}</span></td>
-            <td style="color:var(--gray-500)">${escHtml(p.unidad)}</td>
-            <td>${fmt(p.venta)}</td>
-            <td style="color:var(--blue-600)">${comp.toFixed(1)}</td>
-            <td style="color:var(--amber-500)">${vend.toFixed(1)}</td>
-            <td style="font-weight:700;font-size:15px">${stock.toFixed(1)}</td>
-            <td><span class="badge ${badge}">${estado}</span></td>
-          </tr>`;}).join('')}
-        </tbody>
+        <tbody id="invtbl-body"></tbody>
       </table></div>
     </div>`;
+  invFiltrar();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1748,7 +1758,15 @@ function renderProductos(){
   prodImgData='';
   document.getElementById('page-productos').innerHTML=`
     ${pageHeader('productos','Catálogo de Productos',DB.productos.length+' productos registrados')}
-    <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+      <select id="prod-periodo" onchange="prodFiltrar()" style="padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius-md);font-size:13px;font-family:'DM Sans',sans-serif">
+        <option value="todo">Todos</option><option value="dia">Hoy</option><option value="semana">Esta semana</option><option value="mes">Este mes</option>
+      </select>
+      <select id="prod-cat-fil" onchange="prodFiltrar()" style="padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius-md);font-size:13px;font-family:'DM Sans',sans-serif">
+        <option value="">Todas las categorías</option>
+        ${[...new Set(DB.productos.map(p=>p.categoria))].map(cat=>`<option>${escHtml(cat)}</option>`).join('')}
+      </select>
+      <input class="search-input" id="prod-buscar" placeholder="Buscar producto..." oninput="prodFiltrar()" style="flex:1;min-width:180px">
       <button class="btn btn-secondary btn-sm" onclick="exportarPDFProductos()">📄 Exportar PDF</button>
     </div>
     <div class="card" style="margin-bottom:16px;border-top:3px solid #059669">
@@ -2596,6 +2614,7 @@ function renderNomina(){
           <div class="form-field"><label>Estado</label>
             <select id="emp-estado">
               <option value="Activo">Activo</option>
+              <option value="Parcial">Parcial</option>
               <option value="Inactivo">Inactivo</option>
             </select>
           </div>
@@ -2745,6 +2764,10 @@ function empEditar(i){
 }
 
 function empEditarGuardar(i){
+  if(typeof DB.empleados[i]==='string'){
+    DB.empleados[i]={id:uid(),nombre:DB.empleados[i],cedula:'',cargo:'',tel:'',fechaIngreso:'',salarioBase:0,frecuencia:'Mensual',estado:'Activo'};
+  }
+  if(!DB.empleados[i].id) DB.empleados[i].id=uid();
   DB.empleados[i].nombre=document.getElementById('ee-nom')?.value.trim()||DB.empleados[i].nombre;
   DB.empleados[i].cedula=document.getElementById('ee-ced')?.value.trim()||'';
   DB.empleados[i].cargo=document.getElementById('ee-cargo')?.value.trim()||'';
@@ -2854,78 +2877,46 @@ function pgImprimir(){
 // ══════════════════════════════════════════════════════════════
 function renderCobros(){
   var pg = document.getElementById("page-cobros");
-  var pendientes = (DB.ventas||[]).filter(function(v){ return v.credito && !v.cobrado; });
-  // Calculate saldo for each pending
-  pendientes.forEach(function(v){
-    var abonos = v.abonos || [];
-    v._abonado = abonos.reduce(function(a,b){ return a + b.monto; }, 0);
-    v._saldo = v.total - v._abonado;
-  });
-  var cobradas = (DB.ventas||[]).filter(function(v){ return v.credito && v.cobrado; });
-  var totalPend = pendientes.reduce(function(a,v){ return a+v.total; }, 0);
   var hoy = today();
-  var vencidas = pendientes.filter(function(v){ return v.fechaVence && v.fechaVence < hoy; });
+  var todasPend = (DB.ventas||[]).filter(function(v){ return v.credito && !v.cobrado; });
+  var todasCob = (DB.ventas||[]).filter(function(v){ return v.credito && v.cobrado; });
+  var vencidas = todasPend.filter(function(v){ return v.fechaVence && v.fechaVence < hoy; });
+  var totalPend = todasPend.reduce(function(a,v){ return a+parseFloat(v.total||0); }, 0);
+  todasPend.forEach(function(v){ var ab=v.abonos||[]; v._abonado=ab.reduce(function(a,b){return a+b.monto;},0); v._saldo=v.total-v._abonado; });
 
-  var filasPend = pendientes.length ? pendientes.map(function(v){
-    var ev = v.fechaVence && v.fechaVence < hoy;
-    var color = ev ? "#dc2626" : "inherit";
-    var badge = ev ? "badge-red" : "badge-amber";
-    var estado = ev ? "Vencida" : "Pendiente";
-    return "<tr>" +
-      "<td style='font-family:monospace;font-weight:600'>#" + v.num + "</td>" +
-      "<td>" + escHtml(v.cliente) + "</td>" +
-      "<td>" + dateFmt(v.fecha) + "</td>" +
-      "<td style='color:" + color + "'>" + (v.fechaVence ? dateFmt(v.fechaVence) : "—") + (ev ? " ⚠️" : "") + "</td>" +
-      "<td style='font-weight:700'>" + fmt(v.total) + "</td>" + "<td style='color:#16a34a'>" + fmt(v._abonado||0) + "</td>" + "<td style='font-weight:700;color:#dc2626'>" + fmt(v._saldo||v.total) + "</td>" +
-      "<td><span class='badge " + badge + "'>" + estado + "</span></td>" +
-      "<td><button class='btn btn-primary btn-sm' data-vid='" + v.id + "' onclick='registrarCobro(this.dataset.vid)'>💵 Cobrar</button></td>" +
-      "</tr>";
-  }).join("") : "<tr><td colspan='7' style='text-align:center;padding:24px;color:var(--gray-400)'>No hay facturas pendientes 🎉</td></tr>";
-
-  var filasCob = cobradas.map(function(v){
-    return "<tr>" +
-      "<td style='font-family:monospace'>#" + v.num + "</td>" +
-      "<td>" + escHtml(v.cliente) + "</td>" +
-      "<td style='font-weight:700;color:#16a34a'>" + fmt(v.total) + "</td>" +
-      "<td>" + dateFmt(v.fechaCobro || v.fecha) + "</td>" +
-      "</tr>";
-  }).join("");
-
-  pg.innerHTML = pageHeader("cobros","Cuentas por Cobrar","Facturas a credito pendientes de cobro") +
-    `<div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-      <button class="btn btn-primary" onclick="cxcNueva()">➕ Agregar CXC manual</button>
-    </div>` +
-    "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px'>" +
-      "<div class='card' style='border-top:3px solid #dc2626;text-align:center;padding:16px'>" +
-        "<div style='font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px'>Total por cobrar</div>" +
-        "<div style='font-size:22px;font-weight:800;color:#dc2626'>" + fmt(totalPend) + "</div>" +
-        "<div style='font-size:12px;color:var(--gray-400)'>" + pendientes.length + " facturas pendientes</div>" +
+  pg.innerHTML = pageHeader("cobros","Cuentas por Cobrar","Facturas a crédito pendientes de cobro") +
+    "<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px'>" +
+      "<select id='cxc-periodo' onchange='cxcFiltrar()' style='padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:DM Sans,sans-serif'>" +
+        "<option value='semana'>Esta semana</option>" +
+        "<option value='todo'>Todas</option>" +
+        "<option value='dia'>Hoy</option>" +
+        "<option value='mes'>Este mes</option>" +
+        "<option value='rango'>Rango personalizado</option>" +
+      "</select>" +
+      "<div id='cxc-rango-wrap' style='display:none;gap:6px'>" +
+        "<input type='date' id='cxc-desde' value='" + hoy + "' onchange='cxcFiltrar()' style='padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:6px;font-size:13px'>" +
+        "<input type='date' id='cxc-hasta' value='" + hoy + "' onchange='cxcFiltrar()' style='padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:6px;font-size:13px'>" +
       "</div>" +
-      "<div class='card' style='border-top:3px solid #f59e0b;text-align:center;padding:16px'>" +
-        "<div style='font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px'>Vencidas</div>" +
-        "<div style='font-size:22px;font-weight:800;color:#f59e0b'>" + vencidas.length + "</div>" +
-        "<div style='font-size:12px;color:var(--gray-400)'>facturas vencidas</div>" +
-      "</div>" +
-      "<div class='card' style='border-top:3px solid #16a34a;text-align:center;padding:16px'>" +
-        "<div style='font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px'>Cobradas</div>" +
-        "<div style='font-size:22px;font-weight:800;color:#16a34a'>" + fmt(cobradas.reduce(function(a,v){return a+v.total;},0)) + "</div>" +
-        "<div style='font-size:12px;color:var(--gray-400)'>" + cobradas.length + " facturas cobradas</div>" +
-      "</div>" +
+      "<div style='flex:1'></div>" +
+      "<button class='btn btn-primary btn-sm' onclick='cxcNueva()'>➕ Nueva CXC</button>" +
     "</div>" +
-    "<div class='card'>" +
-      "<div class='card-title'><span class='ico'>🔔</span>Facturas pendientes de cobro</div>" +
-      "<div class='table-wrap'><table>" +
-        "<thead><tr><th>#Factura</th><th>Cliente</th><th>Fecha venta</th><th>Vence</th><th>Total</th><th>Abonado</th><th>Saldo</th><th>Estado</th><th>Accion</th></tr></thead>" +
-        "<tbody>" + filasPend + "</tbody>" +
-      "</table></div>" +
+    "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px'>" +
+      "<div class='card' style='border-top:3px solid #dc2626;text-align:center;padding:16px'><div style='font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px'>Total por cobrar</div><div style='font-size:22px;font-weight:800;color:#dc2626'>" + fmt(totalPend) + "</div><div style='font-size:12px;color:var(--gray-400)'>" + todasPend.length + " facturas pendientes</div></div>" +
+      "<div class='card' style='border-top:3px solid #f59e0b;text-align:center;padding:16px'><div style='font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px'>🔴 Vencidas</div><div style='font-size:22px;font-weight:800;color:#f59e0b'>" + vencidas.length + "</div><div style='font-size:12px;color:var(--gray-400)'>sin cobrar y vencidas</div></div>" +
+      "<div class='card' style='border-top:3px solid #16a34a;text-align:center;padding:16px'><div style='font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px'>Cobradas</div><div style='font-size:22px;font-weight:800;color:#16a34a'>" + fmt(todasCob.reduce(function(a,v){return a+parseFloat(v.total||0);},0)) + "</div><div style='font-size:12px;color:var(--gray-400)'>" + todasCob.length + " cobradas</div></div>" +
     "</div>" +
-    (cobradas.length ? "<div class='card' style='margin-top:16px'>" +
-      "<div class='card-title'><span class='ico'>✅</span>Facturas cobradas</div>" +
-      "<div class='table-wrap'><table>" +
-        "<thead><tr><th>#Factura</th><th>Cliente</th><th>Total</th><th>Fecha cobro</th></tr></thead>" +
-        "<tbody>" + filasCob + "</tbody>" +
-      "</table></div>" +
-    "</div>" : "");
+    (vencidas.length ? "<div style='background:#fef2f2;border:1.5px solid #fca5a5;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px'><span style='font-size:20px'>🚨</span><span style='font-weight:600;color:#dc2626'>" + vencidas.length + " factura(s) vencida(s) sin cobrar</span></div>" : "") +
+    "<div class='card'><div class='card-title'><span class='ico'>🔔</span>Facturas pendientes por cliente</div>" +
+      "<div class='table-wrap'><table><thead><tr>" +
+        "<th># Factura</th><th>Fecha</th><th style='text-align:right'>Monto</th><th style='text-align:right'>Abonado</th><th style='text-align:right'>Saldo</th><th>Acciones</th>" +
+      "</tr></thead>" +
+      "<tbody id='cxc-pend-body'></tbody></table></div>" +
+    "</div>" +
+    "<div class='card' style='margin-top:16px'><div class='card-title'><span class='ico'>✅</span>Cobradas</div>" +
+      "<div class='table-wrap'><table><thead><tr><th># Factura</th><th>Cliente</th><th>Total</th><th>Fecha cobro</th></tr></thead>" +
+      "<tbody id='cxc-cob-body'></tbody></table></div>" +
+    "</div>";
+  cxcFiltrar();
 }
 
 function registrarCobro(id){
@@ -4517,3 +4508,579 @@ function imprimirFactura() {
   if (v) { closeModal(); guardarFacturaPDF(v.id); }
 }
 </script>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// INACTIVIDAD 20 MINUTOS
+// ══════════════════════════════════════════════════════════════
+const INACTIVIDAD_MS = 19 * 60 * 1000;
+
+function resetInactividad(){
+  if(!currentUser) return;
+  clearTimeout(window._inactividadTimer);
+  clearInterval(window._inactividadAviso);
+  const av = document.getElementById('inactividad-aviso');
+  if(av) av.style.display = 'none';
+  window._inactividadTimer = setTimeout(function(){ mostrarAvisoInactividad(); }, INACTIVIDAD_MS);
+}
+
+function mostrarAvisoInactividad(){
+  let seg = 60;
+  const av = document.getElementById('inactividad-aviso');
+  if(av) av.style.display = 'flex';
+  const el = document.getElementById('inact-countdown');
+  if(el) el.textContent = seg;
+  window._inactividadAviso = setInterval(function(){
+    seg--;
+    const el2 = document.getElementById('inact-countdown');
+    if(el2) el2.textContent = seg;
+    if(seg <= 0){
+      clearInterval(window._inactividadAviso);
+      const av2 = document.getElementById('inactividad-aviso');
+      if(av2) av2.style.display = 'none';
+      if(currentUser){ doLogout(); if(typeof toast==='function') toast('Sesión cerrada por inactividad'); }
+    }
+  }, 1000);
+}
+
+function continuarSesion(){
+  clearInterval(window._inactividadAviso);
+  const av = document.getElementById('inactividad-aviso');
+  if(av) av.style.display = 'none';
+  resetInactividad();
+}
+
+['click','keydown','mousemove','touchstart','scroll'].forEach(function(ev){
+  document.addEventListener(ev, function(){ if(currentUser) resetInactividad(); }, {passive:true});
+});
+
+// ══════════════════════════════════════════════════════════════
+// INVENTARIO: filtrar
+// ══════════════════════════════════════════════════════════════
+function invFiltrar(){
+  const buscar = (document.getElementById('inv-buscar')?.value || '').toLowerCase();
+  const tbody = document.getElementById('invtbl-body');
+  if(!tbody) return;
+  let filas = '', total = 0;
+  DB.productos.forEach(function(p){
+    if(buscar && !p.nombre.toLowerCase().includes(buscar) && !(p.codigo||'').toLowerCase().includes(buscar)) return;
+    const comp = DB.compras.filter(function(c){ return c.producto===p.nombre; }).reduce(function(a,c){ return a+parseFloat(c.cantidad||0); }, 0);
+    const vend = DB.ventas.flatMap(function(v){ return v.lineas||[]; }).filter(function(l){ return l.nombre===p.nombre; }).reduce(function(a,l){ return a+parseFloat(l.cantidad||0); }, 0);
+    const stock = comp - vend;
+    const badge = stock<=0 ? 'badge-red' : stock<=(p.minimo||0) ? 'badge-amber' : 'badge-green';
+    const estado = stock<=0 ? 'Sin stock' : stock<=(p.minimo||0) ? 'Stock bajo' : 'Disponible';
+    total += stock * parseFloat(p.venta||0);
+    filas += '<tr>' +
+      '<td>' + (typeof imgEl==='function' ? imgEl(p.img,'img-thumb') : '') + '</td>' +
+      '<td style="color:var(--gray-400);font-size:12px">' + escHtml(p.codigo||'') + '</td>' +
+      '<td style="font-weight:500">' + escHtml(p.nombre) + '</td>' +
+      '<td><span class="badge badge-gray">' + escHtml(p.categoria) + '</span></td>' +
+      '<td style="color:var(--gray-500)">' + escHtml(p.unidad) + '</td>' +
+      '<td>' + fmt(p.venta) + '</td>' +
+      '<td style="color:var(--blue-600)">' + comp.toFixed(1) + '</td>' +
+      '<td style="color:var(--amber-500)">' + vend.toFixed(1) + '</td>' +
+      '<td style="font-weight:700;font-size:15px">' + stock.toFixed(1) + '</td>' +
+      '<td><span class="badge ' + badge + '">' + estado + '</span></td>' +
+    '</tr>';
+  });
+  tbody.innerHTML = filas || '<tr><td colspan="10"><div class="empty-state"><p>Sin productos</p></div></td></tr>';
+  const res = document.getElementById('inv-resumen');
+  if(res) res.innerHTML = '<span style="background:#ede9fe;color:#7c3aed;padding:4px 12px;border-radius:20px;font-weight:600">Valor total inventario: ' + fmt(total) + '</span>';
+}
+
+// ══════════════════════════════════════════════════════════════
+// PRODUCTOS: filtrar
+// ══════════════════════════════════════════════════════════════
+function prodFiltrar(){
+  const cat = document.getElementById('prod-cat-fil')?.value || '';
+  const buscar = (document.getElementById('prod-buscar')?.value || '').toLowerCase();
+  document.querySelectorAll('#prod-list-body tr').forEach(function(el){
+    const txt = el.textContent.toLowerCase();
+    const elCat = (el.dataset.cat || '').toLowerCase();
+    el.style.display = (!cat || elCat === cat.toLowerCase()) && (!buscar || txt.includes(buscar)) ? '' : 'none';
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// NUEVA VENTA: RNC toggle
+// ══════════════════════════════════════════════════════════════
+function facToggleRNC(){
+  const chk = document.getElementById('fac-rnc-check');
+  const inp = document.getElementById('fac-rnc-val');
+  if(inp) inp.style.display = chk && chk.checked ? 'block' : 'none';
+  if(typeof facUpdatePreview === 'function') facUpdatePreview();
+}
+
+// ══════════════════════════════════════════════════════════════
+// GASTOS: filtrar + editar
+// ══════════════════════════════════════════════════════════════
+function gsGetRango(){
+  const per = document.getElementById('gs-periodo')?.value || 'semana';
+  const hoy = today();
+  if(per==='dia') return {desde:hoy, hasta:hoy};
+  if(per==='semana'){
+    const d = new Date(); const dia = d.getDay()||7;
+    d.setDate(d.getDate()-dia+1);
+    const lunes = d.toISOString().split('T')[0];
+    const dom = new Date(d); dom.setDate(d.getDate()+6);
+    return {desde:lunes, hasta:dom.toISOString().split('T')[0]};
+  }
+  if(per==='mes') return {desde:hoy.slice(0,7)+'-01', hasta:hoy};
+  if(per==='rango') return {desde:document.getElementById('gs-desde')?.value||hoy, hasta:document.getElementById('gs-hasta')?.value||hoy};
+  return {desde:null, hasta:null};
+}
+
+function gsFiltrar(){
+  const per = document.getElementById('gs-periodo')?.value || 'semana';
+  const rw = document.getElementById('gs-rango-wrap');
+  if(rw) rw.style.display = per==='rango' ? 'flex' : 'none';
+  const {desde, hasta} = gsGetRango();
+  const buscar = (document.getElementById('gs-buscar')?.value || '').toLowerCase();
+  let gastos = DB.gastos.slice().reverse();
+  if(desde && hasta) gastos = gastos.filter(function(g){ return g.fecha >= desde && g.fecha <= hasta; });
+  if(buscar) gastos = gastos.filter(function(g){ return (g.descripcion||'').toLowerCase().includes(buscar) || (g.categoria||'').toLowerCase().includes(buscar); });
+  const total = gastos.reduce(function(a,g){ return a+parseFloat(g.monto||0); }, 0);
+  const res = document.getElementById('gs-fil-resumen');
+  if(res) res.innerHTML = gastos.length ? '<span style="background:#ffe4e6;color:#e11d48;padding:4px 12px;border-radius:20px;font-weight:600">' + gastos.length + ' gastos · Total: ' + fmt(total) + '</span>' : '';
+  const tbody = document.getElementById('gstbl-body');
+  if(!tbody) return;
+  tbody.innerHTML = gastos.map(function(g){
+    const i = DB.gastos.findIndex(function(x){ return x === g || (x.fecha===g.fecha && x.descripcion===g.descripcion && x.monto===g.monto); });
+    return '<tr>' +
+      '<td>' + dateFmt(g.fecha) + '</td>' +
+      '<td><span class="badge" style="background:#ffe4e6;color:#e11d48">' + escHtml(g.categoria) + '</span></td>' +
+      '<td style="font-weight:500">' + escHtml(g.descripcion) + '</td>' +
+      '<td style="color:var(--gray-500)">' + escHtml(g.proveedor||'—') + '</td>' +
+      '<td style="color:var(--gray-400);font-size:12px">' + escHtml(g.comprobante||'—') + '</td>' +
+      '<td style="text-align:right;font-weight:600;color:#e11d48">' + fmt(g.monto) + '</td>' +
+      '<td><div style="display:flex;gap:4px">' +
+        '<button class="btn btn-secondary btn-sm" onclick="gsEditar(' + i + ')">✏️</button>' +
+        (can('del_gastos') ? '<button class="btn btn-danger btn-sm" onclick="gsEliminar(' + i + ')">🗑</button>' : '') +
+      '</div></td>' +
+    '</tr>';
+  }).join('') || '<tr><td colspan="7"><div class="empty-state"><div class="empty-ico">💸</div><p>Sin gastos en este período</p></div></td></tr>';
+}
+
+function gsEditar(i){
+  if(i < 0 || !DB.gastos[i]) return;
+  const g = DB.gastos[i];
+  const cats = typeof getCategoriasGastos === 'function' ? getCategoriasGastos() : ['Alquiler','Electricidad','Agua','Transporte','Otros'];
+  openModal('Editar gasto',
+    '<div class="form-row c2">' +
+      '<div class="form-field"><label>Fecha</label><input type="date" id="gse-fecha" value="' + g.fecha + '"></div>' +
+      '<div class="form-field"><label>Categoría</label><select id="gse-cat">' +
+        cats.map(function(cat){ return '<option value="' + escHtml(cat) + '"' + (cat===g.categoria?' selected':'') + '>' + escHtml(cat) + '</option>'; }).join('') +
+      '</select></div>' +
+    '</div>' +
+    '<div class="form-row c2" style="margin-top:10px">' +
+      '<div class="form-field"><label>Descripción</label><input type="text" id="gse-desc" value="' + escHtml(g.descripcion||'') + '"></div>' +
+      '<div class="form-field"><label>Proveedor</label><input type="text" id="gse-prov" value="' + escHtml(g.proveedor||'') + '"></div>' +
+    '</div>' +
+    '<div class="form-row c2" style="margin-top:10px">' +
+      '<div class="form-field"><label>Monto</label><input type="number" id="gse-monto" value="' + g.monto + '" min="0" step="0.01"></div>' +
+      '<div class="form-field"><label>Comprobante</label><input type="text" id="gse-comp" value="' + escHtml(g.comprobante||'') + '"></div>' +
+    '</div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="gsEditarGuardar(' + i + ')">Guardar</button>');
+}
+
+function gsEditarGuardar(i){
+  const monto = parseFloat(document.getElementById('gse-monto')?.value || 0);
+  if(!monto || monto <= 0){ toast('Monto inválido','error'); return; }
+  DB.gastos[i].fecha = document.getElementById('gse-fecha')?.value || DB.gastos[i].fecha;
+  DB.gastos[i].categoria = document.getElementById('gse-cat')?.value || DB.gastos[i].categoria;
+  DB.gastos[i].descripcion = document.getElementById('gse-desc')?.value.trim() || DB.gastos[i].descripcion;
+  DB.gastos[i].proveedor = document.getElementById('gse-prov')?.value.trim() || '';
+  DB.gastos[i].monto = monto;
+  DB.gastos[i].comprobante = document.getElementById('gse-comp')?.value.trim() || '';
+  sDB('gastos'); closeModal(); toast('Gasto actualizado'); renderGastos();
+}
+
+// ══════════════════════════════════════════════════════════════
+// CHAT INTERNO
+// ══════════════════════════════════════════════════════════════
+var _chatUnsub = null;
+
+function renderChat(){
+  var pg = document.getElementById('page-chat');
+  if(!pg){ console.warn('page-chat not found'); return; }
+  pg.innerHTML =
+    pageHeader('chat','Chat Interno','Comunicación en tiempo real') +
+    '<div class="card" style="border-top:3px solid #0891b2;display:flex;flex-direction:column;height:calc(100vh - 220px);min-height:400px">' +
+      '<div id="chat-msgs" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px">' +
+        '<div style="text-align:center;color:var(--gray-400);font-size:13px;padding:20px">Cargando mensajes...</div>' +
+      '</div>' +
+      '<div style="border-top:1px solid var(--gray-100);padding:12px 16px;display:flex;gap:8px;align-items:flex-end">' +
+        '<textarea id="chat-input" placeholder="Escribe un mensaje... (Enter para enviar)" rows="2"' +
+          ' style="flex:1;resize:none;padding:10px 14px;border:1.5px solid var(--gray-200);border-radius:10px;font-size:13px;font-family:'DM Sans',sans-serif;line-height:1.4"' +
+          ' onkeydown="chatKeyDown(event)"></textarea>' +
+        '<button class="btn btn-primary" onclick="chatEnviar()" style="padding:10px 18px;border-radius:10px">Enviar</button>' +
+      '</div>' +
+    '</div>';
+  chatSuscribir();
+}
+
+function chatSuscribir(){
+  if(_chatUnsub){ _chatUnsub(); _chatUnsub = null; }
+  if(!window.fbDB){ chatRenderMsgs([]); return; }
+  try {
+    _chatUnsub = window.fbDB.collection('chat').orderBy('ts','asc').limitToLast(100).onSnapshot(
+      function(snap){ var msgs=[]; snap.forEach(function(doc){ msgs.push(doc.data()); }); chatRenderMsgs(msgs); },
+      function(err){ console.warn('Chat error:', err); chatRenderMsgs([]); }
+    );
+  } catch(e){ console.warn('Chat:', e); chatRenderMsgs([]); }
+}
+
+function chatRenderMsgs(msgs){
+  var cont = document.getElementById('chat-msgs');
+  if(!cont) return;
+  if(!msgs.length){ cont.innerHTML = '<div style="text-align:center;color:var(--gray-400);font-size:13px;padding:40px">Sin mensajes aún. ¡Sé el primero!</div>'; return; }
+  var yo = currentUser ? currentUser.nombre : '';
+  cont.innerHTML = msgs.map(function(m){
+    var esMio = m.autor === yo;
+    var hora = m.ts ? new Date(m.ts).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'}) : '';
+    var ini = (m.autor||'?').split(' ').map(function(w){ return w[0]||''; }).join('').slice(0,2).toUpperCase();
+    return '<div style="display:flex;flex-direction:' + (esMio?'row-reverse':'row') + ';gap:8px;align-items:flex-end">' +
+      '<div style="width:32px;height:32px;border-radius:50%;background:' + (esMio?'#0891b2':'#14532e') + ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">' + escHtml(ini) + '</div>' +
+      '<div style="max-width:65%">' +
+        (!esMio ? '<div style="font-size:10px;font-weight:600;color:var(--gray-500);margin-bottom:3px">' + escHtml(m.autor) + '</div>' : '') +
+        '<div style="background:' + (esMio?'#0891b2':'#f1f5f9') + ';color:' + (esMio?'#fff':'#111') + ';padding:9px 14px;border-radius:' + (esMio?'16px 4px 16px 16px':'4px 16px 16px 16px') + ';font-size:13px;line-height:1.45;word-break:break-word">' + escHtml(m.texto) + '</div>' +
+        '<div style="font-size:10px;color:var(--gray-400);margin-top:3px;text-align:' + (esMio?'right':'left') + '">' + hora + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  cont.scrollTop = cont.scrollHeight;
+}
+
+function chatEnviar(){
+  var input = document.getElementById('chat-input');
+  var texto = (input ? input.value : '').trim();
+  if(!texto) return;
+  if(!window.fbDB){ toast('Sin conexión Firebase','error'); return; }
+  var msg = { id: uid(), autor: currentUser ? currentUser.nombre : 'Usuario', rol: currentUser ? currentUser.role : '', texto: texto, ts: Date.now() };
+  window.fbDB.collection('chat').doc(msg.id).set(msg)
+    .then(function(){ if(input) input.value = ''; })
+    .catch(function(e){ toast('Error al enviar','error'); });
+}
+
+function chatKeyDown(e){
+  if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); chatEnviar(); }
+}
+
+window._onlineUsers = {};
+</script>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// COMPRAS: editar + borrar
+// ══════════════════════════════════════════════════════════════
+function cpEditar(id){
+  var i = DB.compras.findIndex(function(x){ return x.id===id; });
+  if(i<0) return;
+  var cv = DB.compras[i];
+  openModal('Editar compra',
+    '<div class="form-row c2">' +
+      '<div class="form-field"><label>Fecha</label><input type="date" id="cpe-fecha" value="'+cv.fecha+'"></div>' +
+      '<div class="form-field"><label>Suplidor</label><select id="cpe-sup"><option value="">Sin suplidor</option>' +
+        DB.suplidores.map(function(s){ return '<option value="'+escHtml(s.nombre)+'"'+(s.nombre===cv.suplidor?' selected':'')+'>'+escHtml(s.nombre)+'</option>'; }).join('') +
+      '</select></div>' +
+    '</div>' +
+    '<div class="form-row c2" style="margin-top:10px">' +
+      '<div class="form-field"><label>Producto</label><select id="cpe-prod">' +
+        DB.productos.map(function(p){ return '<option value="'+escHtml(p.nombre)+'"'+(p.nombre===cv.producto?' selected':'')+'>'+escHtml(p.nombre)+'</option>'; }).join('') +
+      '</select></div>' +
+      '<div class="form-field"><label>Cantidad</label><input type="number" id="cpe-cant" value="'+cv.cantidad+'" min="0" step="0.1"></div>' +
+    '</div>' +
+    '<div class="form-row c2" style="margin-top:10px">' +
+      '<div class="form-field"><label>Precio unitario</label><input type="number" id="cpe-precio" value="'+cv.precio+'" min="0" step="0.01"></div>' +
+      '<div class="form-field"><label>Forma de pago</label><select id="cpe-pago">' +
+        '<option value="Contado"'+(cv.pago!=='Credito'?' selected':'')+'>Contado</option>' +
+        '<option value="Credito"'+(cv.pago==='Credito'?' selected':'')+'>Crédito</option>' +
+      '</select></div>' +
+    '</div>' +
+    '<div class="form-field" style="margin-top:10px"><label>Referencia</label><input type="text" id="cpe-ref" value="'+escHtml(cv.ref||'')+'"></div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="cpEditarGuardar('+i+')">Guardar</button>');
+}
+function cpEditarGuardar(i){
+  var cant = parseFloat(document.getElementById('cpe-cant')?.value||0);
+  if(!cant||cant<=0){ toast('Cantidad inválida','error'); return; }
+  DB.compras[i].fecha = document.getElementById('cpe-fecha')?.value || DB.compras[i].fecha;
+  DB.compras[i].suplidor = document.getElementById('cpe-sup')?.value || '';
+  DB.compras[i].producto = document.getElementById('cpe-prod')?.value || DB.compras[i].producto;
+  DB.compras[i].cantidad = cant;
+  DB.compras[i].precio = parseFloat(document.getElementById('cpe-precio')?.value||0);
+  DB.compras[i].pago = document.getElementById('cpe-pago')?.value || 'Contado';
+  DB.compras[i].ref = document.getElementById('cpe-ref')?.value.trim() || '';
+  sDB('compras'); closeModal(); toast('Compra actualizada'); renderCompras();
+}
+function cpEliminar(id){
+  var i = DB.compras.findIndex(function(x){ return x.id===id; });
+  if(i<0) return;
+  openModal('Eliminar compra','<p>¿Eliminar la compra de <strong>'+escHtml(DB.compras[i].producto)+'</strong>?</p>',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-danger" onclick="DB.compras.splice('+i+',1);sDB('compras');closeModal();toast('Compra eliminada');renderCompras()">Eliminar</button>');
+}
+
+// ══════════════════════════════════════════════════════════════
+// CXP: filtrar + editar + borrar
+// ══════════════════════════════════════════════════════════════
+function cxpGetRango(){
+  var per = document.getElementById('cxp-periodo')?.value || 'semana';
+  var hoy = today();
+  if(per==='dia') return {desde:hoy,hasta:hoy};
+  if(per==='semana'){ var d=new Date();var dia=d.getDay()||7;d.setDate(d.getDate()-dia+1);var lu=d.toISOString().split('T')[0];var dm=new Date(d);dm.setDate(d.getDate()+6);return {desde:lu,hasta:dm.toISOString().split('T')[0]}; }
+  if(per==='mes') return {desde:hoy.slice(0,7)+'-01',hasta:hoy};
+  if(per==='rango') return {desde:document.getElementById('cxp-desde')?.value||hoy,hasta:document.getElementById('cxp-hasta')?.value||hoy};
+  return {desde:null,hasta:null};
+}
+function cxpFiltrar(){
+  var per = document.getElementById('cxp-periodo')?.value || 'semana';
+  var rw = document.getElementById('cxp-rango-wrap');
+  if(rw) rw.style.display = per==='rango' ? 'flex' : 'none';
+  var rango = cxpGetRango();
+  var hoy = today();
+  var pend = (DB.compras||[]).filter(function(v){ return v.pago==='Credito'&&!v.cobrado; });
+  var pags = (DB.compras||[]).filter(function(v){ return v.pago==='Credito'&&v.cobrado; });
+  if(rango.desde&&rango.hasta){
+    pend = pend.filter(function(v){ return v.fecha>=rango.desde&&v.fecha<=rango.hasta; });
+    pags = pags.filter(function(v){ return v.fecha>=rango.desde&&v.fecha<=rango.hasta; });
+  }
+  pend.forEach(function(v){ var ab=v.abonos||[];v._total=(v.cantidad||0)*(v.precio||0);v._abonado=ab.reduce(function(a,b){return a+b.monto;},0);v._saldo=v._total-v._abonado; });
+  var t1 = document.getElementById('cxp-pend-body');
+  if(t1) t1.innerHTML = pend.length ? pend.map(function(v){
+    var ev = v.fechaVence&&v.fechaVence<hoy;
+    return '<tr style="'+(ev?'background:#fef2f2':'')+'">' +
+      '<td>'+dateFmt(v.fecha)+'</td><td>'+escHtml(v.suplidor||'—')+'</td><td style="font-weight:500">'+escHtml(v.producto)+'</td>' +
+      '<td style="font-weight:700">'+fmt(v._total)+'</td><td style="color:#16a34a">'+fmt(v._abonado)+'</td><td style="font-weight:700;color:#dc2626">'+fmt(v._saldo)+'</td>' +
+      '<td style="color:'+(ev?'#dc2626':'inherit')+'">'+(v.fechaVence?dateFmt(v.fechaVence):'—')+(ev?' ⚠️':'')+'</td>' +
+      '<td><div style="display:flex;gap:4px">' +
+        '<button class="btn btn-primary btn-sm" data-cid="'+v.id+'" onclick="registrarPago(this.dataset.cid)">Pagar</button>' +
+        '<button class="btn btn-secondary btn-sm" onclick="cxpEditar(''+v.id+'')">✏️</button>' +
+        (isAdmin()||can('del_compras') ? '<button class="btn btn-danger btn-sm" onclick="cxpBorrar(''+v.id+'')">🗑</button>' : '') +
+      '</div></td></tr>';
+  }).join('') : '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--gray-400)">Sin cuentas pendientes</td></tr>';
+  var t2 = document.getElementById('cxp-pag-body');
+  if(t2) t2.innerHTML = pags.length ? pags.map(function(v){
+    return '<tr><td>'+dateFmt(v.fecha)+'</td><td>'+escHtml(v.suplidor||'—')+'</td><td>'+escHtml(v.producto)+'</td><td style="font-weight:700;color:#16a34a">'+fmt((v.cantidad||0)*(v.precio||0))+'</td><td>'+dateFmt(v.fechaCobro||v.fecha)+'</td></tr>';
+  }).join('') : '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--gray-400)">Sin pagos</td></tr>';
+}
+function cxpEditar(id){
+  var i = DB.compras.findIndex(function(x){ return x.id===id; });
+  if(i<0) return;
+  var cv = DB.compras[i];
+  openModal('Editar CXP',
+    '<div class="form-field"><label>Suplidor</label><input type="text" id="cxpe-sup" value="'+escHtml(cv.suplidor||'')+'"></div>' +
+    '<div class="form-field" style="margin-top:10px"><label>Concepto</label><input type="text" id="cxpe-prod" value="'+escHtml(cv.producto||'')+'"></div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">' +
+      '<div class="form-field"><label>Monto</label><input type="number" id="cxpe-monto" value="'+(cv.cantidad*cv.precio)+'" min="0" step="0.01"></div>' +
+      '<div class="form-field"><label>Fecha vencimiento</label><input type="date" id="cxpe-vence" value="'+(cv.fechaVence||'')+'"></div>' +
+    '</div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="cxpEditarGuardar('+i+')">Guardar</button>');
+}
+function cxpEditarGuardar(i){
+  var monto = parseFloat(document.getElementById('cxpe-monto')?.value||0);
+  if(!monto||monto<=0){ toast('Monto inválido','error'); return; }
+  DB.compras[i].suplidor = document.getElementById('cxpe-sup')?.value.trim()||DB.compras[i].suplidor;
+  DB.compras[i].producto = document.getElementById('cxpe-prod')?.value.trim()||DB.compras[i].producto;
+  DB.compras[i].cantidad = 1; DB.compras[i].precio = monto;
+  DB.compras[i].fechaVence = document.getElementById('cxpe-vence')?.value||null;
+  sDB('compras'); closeModal(); toast('CXP actualizada'); renderCxP();
+}
+function cxpBorrar(id){
+  var i = DB.compras.findIndex(function(x){ return x.id===id; });
+  if(i<0) return;
+  openModal('Eliminar CXP','<p>¿Eliminar esta cuenta por pagar?</p>',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-danger" onclick="DB.compras.splice('+i+',1);sDB('compras');closeModal();toast('CXP eliminada');renderCxP()">Eliminar</button>');
+}
+
+// ══════════════════════════════════════════════════════════════
+// CXC: filtrar + editar + borrar + estado de cuenta
+// ══════════════════════════════════════════════════════════════
+function cxcGetRango(){
+  var per = document.getElementById('cxc-periodo')?.value || 'semana';
+  var hoy = today();
+  if(per==='dia') return {desde:hoy,hasta:hoy};
+  if(per==='semana'){ var d=new Date();var dia=d.getDay()||7;d.setDate(d.getDate()-dia+1);var lu=d.toISOString().split('T')[0];var dm=new Date(d);dm.setDate(d.getDate()+6);return {desde:lu,hasta:dm.toISOString().split('T')[0]}; }
+  if(per==='mes') return {desde:hoy.slice(0,7)+'-01',hasta:hoy};
+  if(per==='rango') return {desde:document.getElementById('cxc-desde')?.value||hoy,hasta:document.getElementById('cxc-hasta')?.value||hoy};
+  return {desde:null,hasta:null};
+}
+function cxcFiltrar(){
+  var per = document.getElementById('cxc-periodo')?.value || 'semana';
+  var rw = document.getElementById('cxc-rango-wrap');
+  if(rw) rw.style.display = per==='rango' ? 'flex' : 'none';
+  var rango = cxcGetRango();
+  var hoy = today();
+  var pend = (DB.ventas||[]).filter(function(v){ return v.credito&&!v.cobrado; });
+  var cobs = (DB.ventas||[]).filter(function(v){ return v.credito&&v.cobrado; });
+  if(rango.desde&&rango.hasta){
+    pend = pend.filter(function(v){ return v.fecha>=rango.desde&&v.fecha<=rango.hasta; });
+    cobs = cobs.filter(function(v){ return v.fecha>=rango.desde&&v.fecha<=rango.hasta; });
+  }
+  pend.forEach(function(v){ var ab=v.abonos||[];v._abonado=ab.reduce(function(a,b){return a+b.monto;},0);v._saldo=v.total-v._abonado; });
+  var porCliente = {};
+  pend.forEach(function(v){ var cli=v.cliente||'Consumidor Final';if(!porCliente[cli])porCliente[cli]=[];porCliente[cli].push(v); });
+  var t1 = document.getElementById('cxc-pend-body');
+  if(t1){
+    if(!pend.length){ t1.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--gray-400)">Sin facturas pendientes</td></tr>'; }
+    else {
+      var html = '';
+      Object.keys(porCliente).forEach(function(cli){
+        var facts = porCliente[cli];
+        var saldo = facts.reduce(function(a,v){ return a+(v._saldo||v.total); },0);
+        var ini = cli.split(' ').map(function(w){return w[0]||'';}).join('').slice(0,2).toUpperCase();
+        var cliEsc = cli.replace(/"/g,'&quot;');
+        html += '<tr style="background:#f8f9fa">' +
+          '<td colspan="4" style="padding:10px 12px;border-top:2px solid #e5e7eb">' +
+            '<div style="display:flex;align-items:center;gap:10px">' +
+              '<div style="width:30px;height:30px;border-radius:50%;background:#e2e8f0;color:#374151;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center">'+escHtml(ini)+'</div>' +
+              '<div><div style="font-weight:600;font-size:13px">'+escHtml(cli)+'</div>' +
+              '<div style="font-size:11px;color:var(--gray-400)">'+facts.length+' factura'+(facts.length>1?'s':'')+'</div></div>' +
+            '</div>' +
+          '</td>' +
+          '<td style="padding:10px 12px;border-top:2px solid #e5e7eb;text-align:right;font-weight:600">'+fmt(saldo)+'</td>' +
+          '<td style="padding:10px 12px;border-top:2px solid #e5e7eb;text-align:right">' +
+            '<button class="btn btn-secondary btn-sm" onclick="estadoCuentaCXC(''+cliEsc+'')">🖨️ Estado de cuenta</button>' +
+          '</td></tr>';
+        facts.forEach(function(v){
+          html += '<tr>' +
+            '<td style="padding:8px 12px;padding-left:30px;font-family:monospace;font-weight:500">#'+v.num+'</td>' +
+            '<td style="padding:8px 12px;color:var(--gray-500)">'+dateFmt(v.fecha)+'</td>' +
+            '<td style="padding:8px 12px;text-align:right">'+fmt(v.total)+'</td>' +
+            '<td style="padding:8px 12px;text-align:right;color:#16a34a">'+fmt(v._abonado||0)+'</td>' +
+            '<td style="padding:8px 12px;text-align:right;font-weight:600">'+fmt(v._saldo||v.total)+'</td>' +
+            '<td style="padding:8px 12px"><div style="display:flex;gap:4px">' +
+              '<button class="btn btn-primary btn-sm" data-vid="'+v.id+'" onclick="registrarCobro(this.dataset.vid)">Cobrar</button>' +
+              '<button class="btn btn-secondary btn-sm" onclick="cxcEditar(''+v.id+'')">✏️</button>' +
+              (isAdmin()||can('del_ventas') ? '<button class="btn btn-danger btn-sm" onclick="cxcBorrar(''+v.id+'')">🗑</button>' : '') +
+            '</div></td></tr>';
+        });
+      });
+      t1.innerHTML = html;
+    }
+  }
+  var t2 = document.getElementById('cxc-cob-body');
+  if(t2) t2.innerHTML = cobs.length ? cobs.map(function(v){
+    return '<tr><td style="font-family:monospace">#'+v.num+'</td><td>'+escHtml(v.cliente||'—')+'</td><td style="font-weight:700;color:#16a34a">'+fmt(v.total)+'</td><td>'+dateFmt(v.fechaCobro||v.fecha)+'</td></tr>';
+  }).join('') : '<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--gray-400)">Sin cobros registrados</td></tr>';
+}
+function cxcEditar(id){
+  var i = DB.ventas.findIndex(function(x){ return x.id===id; });
+  if(i<0) return;
+  var v = DB.ventas[i];
+  openModal('Editar CXC',
+    '<div class="form-field"><label>Cliente</label><input type="text" id="cxce-cli" value="'+escHtml(v.cliente||'')+'"></div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">' +
+      '<div class="form-field"><label>Monto</label><input type="number" id="cxce-monto" value="'+v.total+'" min="0" step="0.01"></div>' +
+      '<div class="form-field"><label>Fecha vencimiento</label><input type="date" id="cxce-vence" value="'+(v.fechaVence||'')+'"></div>' +
+    '</div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="cxcEditarGuardar('+i+')">Guardar</button>');
+}
+function cxcEditarGuardar(i){
+  var monto = parseFloat(document.getElementById('cxce-monto')?.value||0);
+  if(!monto||monto<=0){ toast('Monto inválido','error'); return; }
+  DB.ventas[i].cliente = document.getElementById('cxce-cli')?.value.trim()||DB.ventas[i].cliente;
+  DB.ventas[i].total = monto; DB.ventas[i].subtotal = monto;
+  DB.ventas[i].fechaVence = document.getElementById('cxce-vence')?.value||null;
+  sDB('ventas'); closeModal(); toast('CXC actualizada'); renderCobros();
+}
+function cxcBorrar(id){
+  var i = DB.ventas.findIndex(function(x){ return x.id===id; });
+  if(i<0) return;
+  openModal('Eliminar CXC','<p>¿Eliminar esta cuenta por cobrar?</p>',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-danger" onclick="DB.ventas.splice('+i+',1);sDB('ventas');closeModal();toast('CXC eliminada');renderCobros()">Eliminar</button>');
+}
+function estadoCuentaCXC(cliente){
+  var pend = (DB.ventas||[]).filter(function(v){ return v.credito&&!v.cobrado&&(v.cliente||'Consumidor Final')===cliente; });
+  if(!pend.length){ toast('Sin facturas pendientes','error'); return; }
+  pend.forEach(function(v){ var ab=v.abonos||[];v._abonado=ab.reduce(function(a,b){return a+b.monto;},0);v._saldo=v.total-v._abonado; });
+  var totalFact = pend.reduce(function(a,v){ return a+v.total; },0);
+  var totalAbon = pend.reduce(function(a,v){ return a+(v._abonado||0); },0);
+  var totalSaldo = pend.reduce(function(a,v){ return a+(v._saldo||v.total); },0);
+  var cfg = DB.config||{};
+  var emp = cfg.empresa||'Frutas y Vegetales "CHANEL"';
+  var tel = cfg.telefono||'809-847-9880';
+  var dir = cfg.direccion||'Calle Anselmo Copello, Edificio 15, Apto 1-1, Santiago';
+  var email = cfg.email||'vegetaleschanel@hotmail.com';
+  var cliObj = DB.clientes.find(function(x){ return x.nombre===cliente; })||{};
+  var fechaHoy = new Date().toLocaleDateString('es-DO',{day:'2-digit',month:'2-digit',year:'numeric'});
+  var rows = pend.map(function(v){
+    return '<tr>' +
+      '<td style="padding:9px 10px;border:0.5px solid #ddd;font-weight:500">#'+v.num+'</td>' +
+      '<td style="padding:9px 10px;border:0.5px solid #ddd;color:#555">'+dateFmt(v.fecha)+'</td>' +
+      '<td style="padding:9px 10px;border:0.5px solid #ddd;text-align:right">'+v.total.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})+'</td>' +
+      '<td style="padding:9px 10px;border:0.5px solid #ddd;text-align:right">'+(v._abonado||0).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})+'</td>' +
+      '<td style="padding:9px 10px;border:0.5px solid #ddd;text-align:right;font-weight:500">'+(v._saldo||v.total).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})+'</td>' +
+    '</tr>';
+  }).join('');
+  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Estado de cuenta</title>' +
+    '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:DM Sans,Arial,sans-serif;font-size:13px;color:#111;background:#f3f4f6;padding:20px}' +
+    '.toolbar{background:#14532e;color:#fff;padding:10px 20px;display:flex;align-items:center;gap:10px;margin:-20px -20px 20px;position:sticky;top:0;z-index:10}' +
+    '.tbtn{padding:7px 16px;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500}' +
+    '.tbtn-print{background:#fff;color:#14532e}.tbtn-close{background:rgba(255,255,255,.15);color:#fff}' +
+    '.wrap{background:#fff;border-radius:8px;padding:28px;max-width:660px;margin:0 auto;box-shadow:0 2px 12px rgba(0,0,0,.08)}' +
+    '@media print{.toolbar{display:none!important}body{background:#fff;padding:0}.wrap{box-shadow:none;padding:16px}}</style></head><body>' +
+    '<div class="toolbar"><span style="flex:1;font-weight:500">Estado de cuenta — '+escHtml(cliente)+'</span>' +
+    '<button class="tbtn tbtn-close" onclick="window.close()">Cerrar</button>' +
+    '<button class="tbtn tbtn-print" onclick="window.print()">Imprimir / PDF</button></div>' +
+    '<div class="wrap">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:2px solid #14532e;margin-bottom:20px">' +
+        '<div style="display:flex;align-items:center;gap:14px">' +
+          '<div style="width:52px;height:52px;border-radius:50%;background:#14532e;display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0">🌿</div>' +
+          '<div>' +
+            '<div style="font-size:17px;font-weight:500;color:#14532e">'+escHtml(emp)+'</div>' +
+            '<div style="font-size:11px;color:#555;margin-top:3px">Frutas y Vegetales Frescos de Calidad</div>' +
+            '<div style="font-size:11px;color:#555">'+escHtml(tel)+'</div>' +
+            '<div style="font-size:11px;color:#555">'+escHtml(dir)+'</div>' +
+            '<div style="font-size:11px;color:#555">'+escHtml(email)+'</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<div style="font-size:12px;font-weight:500;text-transform:uppercase;color:#14532e;letter-spacing:.5px">Estado de cuenta</div>' +
+          '<div style="font-size:11px;color:#555;margin-top:4px">Fecha: '+fechaHoy+'</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="padding:10px 0;margin-bottom:16px;border-bottom:0.5px solid #ddd">' +
+        '<div style="font-size:11px;text-transform:uppercase;font-weight:500;color:#888;margin-bottom:4px">Cliente</div>' +
+        '<div style="font-size:15px;font-weight:500">'+escHtml(cliente)+'</div>' +
+        (cliObj.tel ? '<div style="font-size:12px;color:#555;margin-top:2px">Tel: '+escHtml(cliObj.tel)+'</div>' : '') +
+        (cliObj.dir ? '<div style="font-size:12px;color:#555">Dir: '+escHtml(cliObj.dir)+'</div>' : '') +
+      '</div>' +
+      '<div style="font-size:11px;font-weight:500;text-transform:uppercase;color:#888;margin-bottom:8px">Facturas pendientes de pago</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">' +
+        '<thead><tr>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:500;color:#555;border:0.5px solid #ddd;width:90px"># Factura</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:500;color:#555;border:0.5px solid #ddd">Fecha</th>' +
+          '<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:500;color:#555;border:0.5px solid #ddd">Monto RD$</th>' +
+          '<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:500;color:#555;border:0.5px solid #ddd">Abonado RD$</th>' +
+          '<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:500;color:#555;border:0.5px solid #ddd">Saldo RD$</th>' +
+        '</tr></thead>' +
+        '<tbody>'+rows+'</tbody>' +
+      '</table>' +
+      '<div style="display:flex;justify-content:flex-end;margin-top:12px">' +
+        '<div style="width:300px">' +
+          '<div style="display:flex;justify-content:space-between;padding:7px 10px;font-size:12px;color:#555;border-bottom:0.5px solid #ddd"><span>Total facturado</span><span>RD$ '+totalFact.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})+'</span></div>' +
+          '<div style="display:flex;justify-content:space-between;padding:7px 10px;font-size:12px;color:#555;border-bottom:0.5px solid #ddd"><span>Total abonado</span><span>RD$ '+totalAbon.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})+'</span></div>' +
+          '<div style="display:flex;justify-content:space-between;padding:10px;border-top:3px double #374151;font-size:15px;font-weight:500"><span>Total pendiente</span><span>RD$ '+totalSaldo.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})+'</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:32px;padding-top:12px;border-top:0.5px solid #ddd">' +
+        '<div style="text-align:center"><div style="border-top:0.5px solid #aaa;margin-bottom:6px;margin-top:28px"></div><div style="font-size:11px;text-transform:uppercase;color:#888">Autorizado por</div></div>' +
+        '<div style="text-align:center"><div style="border-top:0.5px solid #aaa;margin-bottom:6px;margin-top:28px"></div><div style="font-size:11px;text-transform:uppercase;color:#888">Recibido / Conforme</div></div>' +
+      '</div>' +
+      '<div style="text-align:center;font-size:10px;color:#aaa;margin-top:16px;padding-top:10px;border-top:0.5px dashed #ddd">' +
+        'Gracias por su preferencia &middot; '+escHtml(emp)+' &middot; '+escHtml(tel) +
+      '</div>' +
+    '</div></body></html>';
+  var w = window.open('','_blank','width=740,height=900');
+  w.document.write(html);
+  w.document.close();
+}
+</script>
+</body>
+</html>
